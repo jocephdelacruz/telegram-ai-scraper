@@ -22,46 +22,75 @@ LOGGER = lh.LogHandling("../../logs/telegram_tasks.log", "Asia/Manila")
 def process_telegram_message(self, message_data, config):
     """
     Process a Telegram message with AI analysis and notifications
-    Runs in distributed Celery worker
+    Handles both significant and trivial messages with country-specific routing
     """
     try:
-        LOGGER.writeLog(f"Processing message {message_data.get('id', 'unknown')} from {message_data.get('channel', 'unknown')}")
+        message_id = message_data.get('id', 'unknown')
+        channel = message_data.get('channel', 'unknown')
+        country_code = message_data.get('country_code', 'unknown')
         
-        # AI Analysis
+        LOGGER.writeLog(f"Processing message {message_id} from {channel} ({country_code})")
+        
+        # AI Analysis with country-specific filtering
         openai_processor = OpenAIProcessor(config['OPEN_AI_KEY'])
-        analysis_result = openai_processor.isArticleSignificant(
-            message_data['text'], 
-            config['MESSAGE_FILTERING']
+        country_config = config['COUNTRIES'].get(country_code, {}) if country_code else {}
+        
+        is_significant, matched_keywords, classification_method = openai_processor.isMessageSignificant(
+            message_data['text'],
+            country_config=country_config
         )
+        
+        # Build analysis result structure
+        analysis_result = {
+            'is_significant': is_significant,
+            'matched_keywords': matched_keywords,
+            'classification_method': classification_method,
+            'reasoning': f"Classified as {'significant' if is_significant else 'trivial'} using {classification_method}"
+        }
         
         # Add analysis results to message data
         message_data['ai_analysis'] = analysis_result
         message_data['is_significant'] = analysis_result.get('is_significant', False)
+        message_data['AI_Category'] = "Significant" if message_data['is_significant'] else "Trivial"
+        message_data['AI_Reasoning'] = analysis_result.get('reasoning', '')
+        message_data['Keywords_Matched'] = ', '.join(analysis_result.get('matched_keywords', []))
         message_data['processed_at'] = datetime.now().isoformat()
+        message_data['Processed_Date'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Get country-specific configuration
+        countries = config.get('COUNTRIES', {})
+        country_info = countries.get(country_code, {})
         
         if message_data['is_significant']:
-            LOGGER.writeLog(f"Message {message_data.get('id')} marked as SIGNIFICANT")
+            LOGGER.writeLog(f"Message {message_id} marked as SIGNIFICANT")
             
-            # Dispatch parallel tasks for significant messages
-            teams_task = send_teams_notification.delay(message_data, config)
-            sharepoint_task = save_to_sharepoint.delay(message_data, config)
+            # Send Teams notification for significant messages only
+            if country_info.get('teams_webhook'):
+                teams_task = send_teams_notification.delay(message_data, config, country_code)
+                message_data['teams_task_id'] = teams_task.id
+            else:
+                LOGGER.writeLog(f"No Teams webhook configured for {country_code}")
+        else:
+            LOGGER.writeLog(f"Message {message_id} marked as TRIVIAL")
             
-            # Track task IDs for monitoring
-            message_data['teams_task_id'] = teams_task.id
+        # Save ALL messages (both significant and trivial) to SharePoint
+        if country_info.get('sharepoint_config'):
+            sharepoint_task = save_to_sharepoint.delay(message_data, config, country_code)
             message_data['sharepoint_task_id'] = sharepoint_task.id
         else:
-            LOGGER.writeLog(f"Message {message_data.get('id')} marked as trivial")
+            LOGGER.writeLog(f"No SharePoint config found for {country_code}")
             
-        # Always save to local backup (synchronous for reliability)
-        csv_success = save_to_csv_backup.delay(message_data, config)
-        message_data['csv_task_id'] = csv_success.id
+        # Always save to local backup
+        csv_task = save_to_csv_backup.delay(message_data, config)
+        message_data['csv_task_id'] = csv_task.id
         
-        LOGGER.writeLog(f"Message {message_data.get('id')} processing completed")
+        LOGGER.writeLog(f"Message {message_id} processing completed - {message_data['AI_Category']}")
         
         return {
             "status": "success", 
             "significant": message_data['is_significant'],
-            "message_id": message_data.get('id'),
+            "message_id": message_id,
+            "country": country_code,
             "analysis": analysis_result
         }
         
@@ -72,45 +101,71 @@ def process_telegram_message(self, message_data, config):
 
 
 @celery.task(bind=True, retry_kwargs={'max_retries': 3, 'countdown': 30})
-def send_teams_notification(self, message_data, config):
-    """Send Teams notification - can fail independently"""
+def send_teams_notification(self, message_data, config, country_code):
+    """Send Teams notification to country-specific webhook"""
     try:
-        LOGGER.writeLog(f"Sending Teams notification for message {message_data.get('id')}")
+        message_id = message_data.get('id', 'unknown')
+        LOGGER.writeLog(f"Sending Teams notification for message {message_id} ({country_code})")
         
-        teams_config = config.get('MS_TEAMS_CONFIG', {})
-        webhook_url = teams_config.get('WEBHOOK_URL')
+        # Get country-specific Teams configuration
+        countries = config.get('COUNTRIES', {})
+        country_info = countries.get(country_code, {})
+        webhook_url = country_info.get('teams_webhook')
+        channel_name = country_info.get('teams_channel_name', f'{country_code.title()} Telegram Alerts')
         
         if not webhook_url:
-            raise Exception("Teams webhook URL not configured")
+            raise Exception(f"Teams webhook URL not configured for {country_code}")
             
-        teams_notifier = TeamsNotifier(webhook_url)
+        teams_notifier = TeamsNotifier(webhook_url, channel_name)
         success = teams_notifier.send_message_alert(message_data)
         
         if success:
-            LOGGER.writeLog(f"Teams notification sent successfully for message {message_data.get('id')}")
+            LOGGER.writeLog(f"Teams notification sent successfully for message {message_id} to {country_code}")
         else:
             raise Exception("Teams notification failed")
             
-        return {"status": "success", "message_id": message_data.get('id')}
+        return {
+            "status": "success", 
+            "message_id": message_id,
+            "country": country_code,
+            "webhook_used": webhook_url[:50] + "..."
+        }
         
     except Exception as e:
-        LOGGER.writeLog(f"Teams notification failed for message {message_data.get('id', 'unknown')}: {e}")
+        LOGGER.writeLog(f"Teams notification failed for message {message_data.get('id', 'unknown')} ({country_code}): {e}")
         raise self.retry(exc=e)
 
 
 @celery.task(bind=True, retry_kwargs={'max_retries': 3, 'countdown': 45})
-def save_to_sharepoint(self, message_data, config):
-    """Save to SharePoint - can fail independently"""
+def save_to_sharepoint(self, message_data, config, country_code):
+    """Save to country-specific SharePoint file - handles both significant and trivial messages"""
     try:
-        LOGGER.writeLog(f"Saving message {message_data.get('id')} to SharePoint")
+        message_id = message_data.get('id', 'unknown')
+        is_significant = message_data.get('is_significant', False)
+        category = "Significant" if is_significant else "Trivial"
         
+        LOGGER.writeLog(f"Saving {category} message {message_id} to SharePoint ({country_code})")
+        
+        # Get country-specific SharePoint configuration
+        countries = config.get('COUNTRIES', {})
+        country_info = countries.get(country_code, {})
+        sharepoint_config = country_info.get('sharepoint_config', {})
+        
+        if not sharepoint_config:
+            raise Exception(f"No SharePoint configuration found for {country_code}")
+        
+        # Get base SharePoint configuration
         sp_config = config.get('MS_SHAREPOINT_ACCESS', {})
-        
-        # Validate SharePoint configuration
-        required_keys = ['ClientID', 'ClientSecret', 'TenantID', 'SharepointSite', 'SiteName', 'FileName']
+        required_keys = ['ClientID', 'ClientSecret', 'TenantID', 'SharepointSite']
         for key in required_keys:
             if not sp_config.get(key):
                 raise Exception(f"SharePoint configuration missing: {key}")
+        
+        # Build full file path
+        site_name = sharepoint_config.get('site_name', 'ATCSharedFiles')
+        folder_path = sharepoint_config.get('folder_path', '/Telegram_Feeds/')
+        file_name = sharepoint_config.get('file_name', f'{country_code}_Telegram_Feed.xlsx')
+        full_file_path = f"{folder_path}{file_name}"
         
         # Initialize SharePoint processor
         sp_processor = SharepointProcessor(
@@ -118,12 +173,18 @@ def save_to_sharepoint(self, message_data, config):
             sp_config['ClientSecret'],
             sp_config['TenantID'],
             sp_config['SharepointSite'],
-            sp_config['SiteName'],
-            f"{sp_config.get('FolderPath', '')}{sp_config['FileName']}"
+            site_name,
+            full_file_path
         )
         
         if not sp_processor.isConnectedToSharepointFile:
             raise Exception("Failed to connect to SharePoint file")
+        
+        # Determine which sheet to use based on message significance
+        if is_significant:
+            sheet_name = sharepoint_config.get('significant_sheet', 'Significant')
+        else:
+            sheet_name = sharepoint_config.get('trivial_sheet', 'Trivial')
         
         # Prepare data for SharePoint
         excel_fields = config.get('TELEGRAM_EXCEL_FIELDS', [])
@@ -131,10 +192,13 @@ def save_to_sharepoint(self, message_data, config):
         sp_format_data = sp_processor.convertDictToSPFormat(sp_data, excel_fields)
         
         # Find next available row and save
-        sheet_name = sp_config.get('SheetName', 'Sheet1')
+        try:
+            next_row = get_next_available_row(sp_processor, sheet_name)
+        except:
+            # If sheet doesn't exist or other error, start at row 2 (assuming headers in row 1)
+            next_row = 2
+            LOGGER.writeLog(f"Using default row 2 for sheet {sheet_name}")
         
-        # For now, append to a fixed range - you may want to implement dynamic row finding
-        next_row = get_next_available_row(sp_processor, sheet_name)
         range_address = f"A{next_row}:{chr(ord('A') + len(excel_fields) - 1)}{next_row}"
         
         success = sp_processor.updateRange(sheet_name, range_address, sp_format_data)
@@ -143,11 +207,18 @@ def save_to_sharepoint(self, message_data, config):
         sp_processor.closeExcelSession()
         
         if success:
-            LOGGER.writeLog(f"Message {message_data.get('id')} saved to SharePoint successfully")
+            LOGGER.writeLog(f"{category} message {message_id} saved to SharePoint sheet '{sheet_name}' successfully ({country_code})")
         else:
             raise Exception("SharePoint update failed")
             
-        return {"status": "success", "message_id": message_data.get('id'), "range": range_address}
+        return {
+            "status": "success", 
+            "message_id": message_id,
+            "country": country_code,
+            "sheet": sheet_name,
+            "category": category,
+            "range": range_address
+        }
         
     except Exception as e:
         LOGGER.writeLog(f"SharePoint save failed for message {message_data.get('id', 'unknown')}: {e}")
@@ -158,10 +229,21 @@ def save_to_sharepoint(self, message_data, config):
 def save_to_csv_backup(self, message_data, config):
     """Local CSV backup - should rarely fail"""
     try:
-        LOGGER.writeLog(f"Saving message {message_data.get('id')} to CSV backup")
+        message_id = message_data.get('id', 'unknown')
+        country_code = message_data.get('country_code', 'unknown')
+        category = message_data.get('AI_Category', 'Unknown')
         
-        csv_file = "./data/telegram_messages.csv"
-        os.makedirs(os.path.dirname(csv_file), exist_ok=True)
+        LOGGER.writeLog(f"Saving {category} message {message_id} to CSV backup ({country_code})")
+        
+        # Create country-specific CSV files
+        data_dir = "../../data"
+        os.makedirs(data_dir, exist_ok=True)
+        
+        # Separate files for significant and trivial messages
+        if message_data.get('is_significant', False):
+            csv_file = f"{data_dir}/{country_code}_significant_messages.csv"
+        else:
+            csv_file = f"{data_dir}/{country_code}_trivial_messages.csv"
         
         # Use file handling utility
         file_handler = fh.FileHandling(csv_file)
@@ -170,7 +252,7 @@ def save_to_csv_backup(self, message_data, config):
         success = file_handler.append_to_csv(message_data, excel_fields)
         
         if success:
-            LOGGER.writeLog(f"Message {message_data.get('id')} saved to CSV backup successfully")
+            LOGGER.writeLog(f"{category} message {message_id} saved to CSV backup successfully ({country_code})")
         else:
             raise Exception("CSV backup write failed")
             

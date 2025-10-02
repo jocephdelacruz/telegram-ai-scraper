@@ -72,6 +72,17 @@ class TelegramAIScraper:
             raise
 
 
+    def determine_message_country(self, channel_name):
+        """Determine which country a channel belongs to"""
+        countries = self.config.get('COUNTRIES', {})
+        
+        for country_code, country_info in countries.items():
+            if channel_name in country_info.get('channels', []):
+                return country_code, country_info
+        
+        # Default fallback if channel not found in any country
+        return None, None
+
     async def initialize_components(self):
         """Initialize all components (Telegram, OpenAI, Teams, SharePoint)"""
         try:
@@ -97,6 +108,19 @@ class TelegramAIScraper:
             
             # Set message handler
             self.telegram_scraper.set_message_handler(self.handle_new_message)
+            
+            # Get all channels from all countries
+            all_channels = []
+            countries = self.config.get('COUNTRIES', {})
+            for country_code, country_info in countries.items():
+                channels = country_info.get('channels', [])
+                all_channels.extend(channels)
+                LOGGER.writeLog(f"Added {len(channels)} channels for {country_info.get('name', country_code)}")
+            
+            if not all_channels:
+                raise Exception("No channels configured in any country")
+            
+            LOGGER.writeLog(f"Total channels to monitor: {len(all_channels)}")
             
             # Start Telegram client
             success = await self.telegram_scraper.start_client()
@@ -152,18 +176,29 @@ class TelegramAIScraper:
         """
         try:
             self.stats['total_messages'] += 1
-            LOGGER.writeLog(f"Received message {message_data.get('Message_ID', 'unknown')} from {message_data.get('Channel', 'unknown')}")
+            channel_name = message_data.get('Channel', 'unknown')
+            LOGGER.writeLog(f"Received message {message_data.get('Message_ID', 'unknown')} from {channel_name}")
 
             # Skip empty messages
             if not message_data.get('Message_Text', '').strip():
                 LOGGER.writeLog("Skipping message with no text content")
                 return
 
+            # Determine country for this message
+            country_code, country_info = self.determine_message_country(channel_name)
+            if not country_code:
+                LOGGER.writeLog(f"Warning: Channel {channel_name} not found in any country configuration")
+                country_code = "unknown"
+                country_info = {"name": "Unknown"}
+
             # Add processing metadata
             message_data['received_at'] = datetime.now().isoformat()
             message_data['text'] = message_data.get('Message_Text', '')  # Standardize field name for Celery tasks
             message_data['id'] = message_data.get('Message_ID', '')
-            message_data['channel'] = message_data.get('Channel', '')
+            message_data['channel'] = channel_name
+            message_data['country_code'] = country_code
+            message_data['country_name'] = country_info.get('name', country_code)
+            message_data['Country'] = country_info.get('name', country_code)  # For Excel field compatibility
 
             # FAST: Queue the message for processing (non-blocking)
             task = process_telegram_message.delay(message_data, self.config)

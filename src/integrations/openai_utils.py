@@ -35,49 +35,131 @@ class OpenAIProcessor:
       self.apikey = key
 
 
-   def isMessageSignificant(self, message, significant_keywords, trivial_keywords, exclude_keywords):
+   def isMessageSignificant(self, message, significant_keywords=None, trivial_keywords=None, exclude_keywords=None, country_config=None):
       try:
+         # Use country-specific keywords if provided
+         if country_config and 'message_filtering' in country_config:
+            filtering = country_config['message_filtering']
+            significant_keywords = filtering.get('significant_keywords', significant_keywords or [])
+            trivial_keywords = filtering.get('trivial_keywords', trivial_keywords or [])
+            exclude_keywords = filtering.get('exclude_keywords', exclude_keywords or [])
+         
+         # Set defaults if still None
+         if significant_keywords is None:
+            significant_keywords = ["breaking news", "alert", "urgent", "emergency", "crisis"]
+         if trivial_keywords is None:
+            trivial_keywords = ["weather", "sports", "entertainment", "celebrity"]
+         if exclude_keywords is None:
+            exclude_keywords = ["advertisement", "promo", "discount", "sale"]
+         
          # First check if message contains exclude keywords
          message_lower = message.lower()
          for keyword in exclude_keywords:
             if keyword.lower() in message_lower:
                LOGGER.writeLog(f'OpenAIProcessor: Message excluded due to keyword: {keyword}')
-               return False, []
+               return False, [], "excluded"
 
+                  # Check for significant keywords match
+         matched_significant = []
+         for keyword in significant_keywords:
+            if keyword.lower() in message_lower:
+               matched_significant.append(keyword)
+         
+         # Check for trivial keywords match
+         matched_trivial = []
+         for keyword in trivial_keywords:
+            if keyword.lower() in message_lower:
+               matched_trivial.append(keyword)
+         
+         # If both significant and trivial keywords match, use AI to decide
+         if matched_significant and matched_trivial:
+            LOGGER.writeLog(f'OpenAIProcessor: Mixed keywords found - using AI analysis')
+            return self._analyzeWithAI(message, significant_keywords, trivial_keywords, country_config)
+         
+         # If only significant keywords match, classify as significant
+         if matched_significant and not matched_trivial:
+            LOGGER.writeLog(f'OpenAIProcessor: Message classified as Significant by keywords: {matched_significant}')
+            return True, matched_significant, "keyword_significant"
+         
+         # If only trivial keywords match, classify as trivial
+         if matched_trivial and not matched_significant:
+            LOGGER.writeLog(f'OpenAIProcessor: Message classified as Trivial by keywords: {matched_trivial}')
+            return False, matched_trivial, "keyword_trivial"
+         
+         # No keywords matched, use AI analysis
+         LOGGER.writeLog(f'OpenAIProcessor: No keywords matched - using AI analysis')
+         return self._analyzeWithAI(message, significant_keywords, trivial_keywords, country_config)
+         
+      except Exception as e:
+         LOGGER.writeLog(f'OpenAIProcessor: isMessageSignificant - Exception: {e}')
+         return False, [], "error"
+
+
+   def _analyzeWithAI(self, message, significant_keywords, trivial_keywords, country_config=None):
+      """Internal method to analyze message using OpenAI when keyword filtering is inconclusive"""
+      try:
+         # Build country-specific context for AI
+         country_context = ""
+         if country_config:
+            country_name = country_config.get('name', 'this country')
+            country_context = f"""
+            
+        Country-specific context for {country_name}:
+        - Significant topics include: {', '.join(significant_keywords[:10])}{'...' if len(significant_keywords) > 10 else ''}
+        - Trivial topics include: {', '.join(trivial_keywords[:10])}{'...' if len(trivial_keywords) > 10 else ''}
+        
+        Use this country-specific context to better classify the message.
+            """
+         
          prompt = f"""
-         Determine if the message below is significant or trivial, and provide the answer without any additional explanation (either just the word 'Significant' or 'Trivial').
-         A message can be classified as significant, if it's related to any of the topics/keywords listed here: {significant_keywords}
-         A message can be classified as trivial, if they only talk about any of the following topics/keywords listed here: {trivial_keywords}
-         In addition, if a message talks about topics that are both can be classified as trivial and significant, classify it as 'Significant'
+         Analyze the following message and determine if it is significant news that would be important for intelligence or security analysis.
 
-         Message: {message}
+         Consider significant:
+         - Breaking news or urgent alerts
+         - Security incidents, cyber attacks, data breaches
+         - Political developments, government actions
+         - Economic disruptions or major market news
+         - Natural disasters or emergencies
+         - Suspicious activities or investigations
+         - Infrastructure issues or outages
+
+         Consider NOT significant (trivial):
+         - Sports scores, entertainment news
+         - Weather forecasts (unless extreme)
+         - Celebrity gossip or lifestyle content
+         - Routine announcements
+         - Promotional content or advertisements{country_context}
+
+         Message: "{message}"
+
+         Respond with only 'Significant' or 'Trivial' without any additional explanation.
          """
 
          response = self.openai_client.chat.completions.create(
             model=self.openai_model,
-            messages=[{"role": "system", "content": "You are a helpful assistant that analyzes messages for significance."},
+            messages=[{"role": "system", "content": "You are an expert intelligence analyst that evaluates message significance."},
                         {"role": "user", "content": prompt}],
-            max_tokens=self.max_tokens
+            max_tokens=self.max_tokens,
+            temperature=0.3
          )
 
          if response.choices[0] and response.choices[0].message.content:
             answer = response.choices[0].message.content.strip()
             
-            # Find which keywords matched
-            matched_keywords = []
-            for keyword in significant_keywords:
-               if keyword.lower() in message_lower:
-                  matched_keywords.append(keyword)
-            
             if answer == "Significant":
-               LOGGER.writeLog(f'OpenAIProcessor: Message classified as Significant. Keywords matched: {matched_keywords}')
-               return True, matched_keywords
+               LOGGER.writeLog(f'OpenAIProcessor: Message classified as Significant by AI')
+               return True, [], "ai_significant"
+            else:
+               LOGGER.writeLog(f'OpenAIProcessor: Message classified as Trivial by AI')
+               return False, [], "ai_trivial"
          
-         LOGGER.writeLog(f'OpenAIProcessor: Message classified as Trivial')
-         return False, []
+         # Default to trivial if no clear response
+         LOGGER.writeLog(f'OpenAIProcessor: Unable to classify message, defaulting to Trivial')
+         return False, [], "ai_default"
+         
       except Exception as e:
-         LOGGER.writeLog(f'OpenAIProcessor: isMessageSignificant - Exception: {e}')
-         return False, []
+         LOGGER.writeLog(f'OpenAIProcessor: _analyzeWithAI - Exception: {e}')
+         return False, [], "ai_error"
 
 
    def isArticleSignificant(self, article, significant_keywords=None, trivial_keywords=None):

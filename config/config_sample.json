@@ -1,43 +1,117 @@
 {
-   "USERS": {
-      "admin": "your_admin_password"
+   "TELEGRAM_API_ID": "your_telegram_api_id",
+   "TELEGRAM_API_HASH": "your_telegram_api_hash",
+   "TELEGRAM_SESSION_FILE": "session_name",
+   "OPEN_AI_KEY": "your_openai_api_key",
+   "REDIS_URL": "redis://localhost:6379/0",
+   
+   "COUNTRIES": {
+      "philippines": {
+         "name": "Philippines",
+         "channels": ["@philippinesnews", "@rapplerdotcom", "@abscbnnews"],
+         "teams_webhook": "your_philippines_teams_webhook_url",
+         "teams_channel_name": "Philippines Telegram Alerts",
+         "sharepoint_config": {
+            "site_name": "ATCSharedFiles",
+            "folder_path": "/Telegram_Feeds/Philippines/",
+            "file_name": "Philippines_Telegram_Feed.xlsx",
+            "significant_sheet": "Significant",
+            "trivial_sheet": "Trivial"
+         },
+         "message_filtering": {
+            "significant_keywords": [
+               "breaking news", "alert", "urgent", "emergency", "crisis", "attack", "security",
+               "cyber", "breach", "hack", "vulnerability", "malware", "ransomware", "phishing",
+               "data leak", "incident", "threat", "suspicious", "fraud", "scam", "investigation",
+               "duterte", "marcos", "bongbong", "sara duterte", "earthquake", "typhoon", "flood",
+               "corruption", "senate", "congress", "supreme court", "comelec", "ombudsman",
+               "npa", "abu sayyaf", "milf", "mindanao", "sulu", "marawi", "drug war"
+            ],
+            "trivial_keywords": [
+               "weather forecast", "sports", "entertainment", "celebrity", "gossip", "fashion", "food",
+               "travel", "lifestyle", "health tips", "recipe", "horoscope", "quiz", "game",
+               "showbiz", "artista", "tv show", "movie", "concert", "basketball", "boxing",
+               "manny pacquiao", "miss universe", "beauty pageant", "cooking show"
+            ],
+            "exclude_keywords": [
+               "advertisement", "promo", "discount", "sale", "buy now", "limited time",
+               "sponsor", "ad", "commercial", "marketing", "promotional"
+            ]
+         }
+      },
+      "singapore": {
+         "name": "Singapore",
+         "channels": ["@channelnewsasia", "@straitstimes", "@todayonlinesg"],
+         "teams_webhook": "your_singapore_teams_webhook_url",
+         "teams_channel_name": "Singapore Telegram Alerts",
+         "sharepoint_config": {
+            "site_name": "ATCSharedFiles",
+            "folder_path": "/Telegram_Feeds/Singapore/",
+            "file_name": "Singapore_Telegram_Feed.xlsx",
+            "significant_sheet": "Significant",
+            "trivial_sheet": "Trivial"
+         },
+         "message_filtering": {
+            "significant_keywords": [
+               "breaking news", "alert", "urgent", "emergency", "crisis", "attack", "security",
+               "cyber", "breach", "hack", "vulnerability", "malware", "ransomware", "phishing",
+               "data leak", "incident", "threat", "suspicious", "fraud", "scam", "investigation",
+               "pap", "opposition", "lee hsien loong", "lawrence wong", "grc", "smc", "parliament",
+               "monetary authority", "mas", "central bank", "trade war", "asean", "maritime",
+               "strait of malacca", "port", "changi", "water supply", "haze", "psi"
+            ],
+            "trivial_keywords": [
+               "weather", "sports", "entertainment", "celebrity", "gossip", "fashion", "food",
+               "travel", "lifestyle", "health tips", "recipe", "quiz", "game",
+               "hawker center", "mrt", "bus", "grab", "foodpanda", "shopping", "orchard road",
+               "sentosa", "marina bay", "clarke quay", "boat quay"
+            ],
+            "exclude_keywords": [
+               "advertisement", "promo", "discount", "sale", "buy now", "limited time",
+               "sponsor", "ad", "commercial", "marketing", "promotional"
+            ]
+         }
+      },
+      "malaysia": {
+         "name": "Malaysia",
+         "channels": ["@thestaronline", "@malaymail", "@freemalaysiatoday"],
+         "teams_webhook": "your_malaysia_teams_webhook_url",
+         "teams_channel_name": "Malaysia Telegram Alerts",
+         "sharepoint_config": {
+            "site_name": "ATCSharedFiles", 
+            "folder_path": "/Telegram_Feeds/Malaysia/",
+            "file_name": "Malaysia_Telegram_Feed.xlsx",
+            "significant_sheet": "Significant",
+            "trivial_sheet": "Trivial"
+         },
+         "message_filtering": {
+            "significant_keywords": [
+               "breaking news", "alert", "urgent", "emergency", "crisis", "attack", "security",
+               "cyber", "breach", "hack", "vulnerability", "malware", "ransomware", "phishing",
+               "data leak", "incident", "threat", "suspicious", "fraud", "scam", "investigation",
+               "najib", "mahathir", "anwar ibrahim", "umno", "pas", "dap", "pkr", "bn", "ph",
+               "parliament", "dewan rakyat", "agong", "sultan", "1mdb", "corruption", "macc",
+               "flood", "haze", "palm oil", "petronas", "south china sea", "sabah", "sarawak"
+            ],
+            "trivial_keywords": [
+               "weather", "sports", "entertainment", "celebrity", "gossip", "fashion", "food",
+               "travel", "lifestyle", "health tips", "recipe", "horoscope", "quiz", "game",
+               "badminton", "lee chong wei", "football", "harimau malaya", "shopping mall",
+               "raya", "chinese new year", "deepavali", "gawai", "kaamatan"
+            ],
+            "exclude_keywords": [
+               "advertisement", "promo", "discount", "sale", "buy now", "limited time",
+               "sponsor", "ad", "commercial", "marketing", "promotional"
+            ]
+         }
+      }
    },
-   "OPEN_AI_KEY": "your_openai_api_key_here",
-   "TELEGRAM_CONFIG": {
-      "API_ID": "your_telegram_api_id",
-      "API_HASH": "your_telegram_api_hash",
-      "PHONE_NUMBER": "your_phone_number",
-      "CHANNELS_TO_MONITOR": ["@channel1", "@channel2"],
-      "SESSION_FILE": "telegram_session.session"
-   },
-   "MICROSOFT_TEAMS_CONFIG": {
-      "WEBHOOK_URL": "your_teams_webhook_url_here",
-      "CHANNEL_NAME": "Telegram Alerts"
-   },
+
    "MS_SHAREPOINT_ACCESS": {
       "ClientID": "your_sharepoint_client_id",
       "ClientSecret": "your_sharepoint_client_secret",
-      "TenantID": "your_tenant_id",
-      "SharepointSite": "your_sharepoint_site",
-      "SiteName": "your_site_name",
-      "FolderPath": "/path/to/excel/file.xlsx",
-      "SheetName": "Sheet1",
-      "StartingCell": "A1",
-      "RangeAddressToClear": "A1:Z800"
-   },
-   "MESSAGE_FILTERING": {
-      "SIGNIFICANT_KEYWORDS": [
-         "breaking news", "alert", "urgent", "emergency", "crisis", "attack", "security", 
-         "cyber", "breach", "hack", "vulnerability", "malware", "ransomware", "phishing",
-         "data leak", "incident", "threat", "suspicious", "fraud", "scam", "investigation"
-      ],
-      "TRIVIAL_KEYWORDS": [
-         "weather", "sports", "entertainment", "celebrity", "gossip", "fashion", "food",
-         "travel", "lifestyle", "health tips", "recipe", "horoscope", "quiz", "game"
-      ],
-      "EXCLUDE_KEYWORDS": [
-         "advertisement", "promo", "discount", "sale", "buy now", "limited time"
-      ]
+      "TenantID": "your_sharepoint_tenant_id",
+      "SharepointSite": "your_sharepoint_site_url"
    },
    "TELEGRAM_EXCEL_FIELDS": [
       "Message_ID", "Channel", "Date", "Time", "Author", "Message_Text", 

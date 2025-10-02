@@ -110,21 +110,54 @@ if [ ! -f "config/config_sample.json" ]; then
       "API_ID": "your_telegram_api_id",
       "API_HASH": "your_telegram_api_hash",
       "PHONE_NUMBER": "your_phone_number",
-      "CHANNELS_TO_MONITOR": ["@channel1", "@channel2"],
       "SESSION_FILE": "telegram_session.session"
    },
-   "MICROSOFT_TEAMS_CONFIG": {
-      "WEBHOOK_URL": "your_teams_webhook_url_here",
-      "CHANNEL_NAME": "Telegram Alerts"
+   "COUNTRIES": {
+      "philippines": {
+         "name": "Philippines",
+         "channels": ["@philippinesnews", "@rapplerdotcom", "@abscbnnews"],
+         "teams_webhook": "your_philippines_teams_webhook_url",
+         "teams_channel_name": "Philippines Telegram Alerts",
+         "sharepoint_config": {
+            "site_name": "ATCSharedFiles",
+            "folder_path": "/Telegram_Feeds/Philippines/",
+            "file_name": "Philippines_Telegram_Feed.xlsx",
+            "significant_sheet": "Significant",
+            "trivial_sheet": "Trivial"
+         }
+      },
+      "singapore": {
+         "name": "Singapore",
+         "channels": ["@channelnewsasia", "@straitstimes", "@todayonlinesg"],
+         "teams_webhook": "your_singapore_teams_webhook_url",
+         "teams_channel_name": "Singapore Telegram Alerts",
+         "sharepoint_config": {
+            "site_name": "ATCSharedFiles",
+            "folder_path": "/Telegram_Feeds/Singapore/",
+            "file_name": "Singapore_Telegram_Feed.xlsx",
+            "significant_sheet": "Significant", 
+            "trivial_sheet": "Trivial"
+         }
+      },
+      "malaysia": {
+         "name": "Malaysia",
+         "channels": ["@thestaronline", "@malaymail", "@freemalaysiatoday"],
+         "teams_webhook": "your_malaysia_teams_webhook_url",
+         "teams_channel_name": "Malaysia Telegram Alerts",
+         "sharepoint_config": {
+            "site_name": "ATCSharedFiles",
+            "folder_path": "/Telegram_Feeds/Malaysia/",
+            "file_name": "Malaysia_Telegram_Feed.xlsx",
+            "significant_sheet": "Significant",
+            "trivial_sheet": "Trivial"
+         }
+      }
    },
    "MS_SHAREPOINT_ACCESS": {
       "ClientID": "your_sharepoint_client_id",
       "ClientSecret": "your_sharepoint_client_secret",
       "TenantID": "your_tenant_id",
       "SharepointSite": "your_sharepoint_site",
-      "SiteName": "your_site_name",
-      "FolderPath": "/path/to/excel/file.xlsx",
-      "SheetName": "Sheet1",
       "StartingCell": "A1",
       "RangeAddressToClear": "A1:Z800"
    },
@@ -143,8 +176,8 @@ if [ ! -f "config/config_sample.json" ]; then
       ]
    },
    "TELEGRAM_EXCEL_FIELDS": [
-      "Message_ID", "Channel", "Date", "Time", "Author", "Message_Text", 
-      "AI_Category", "Keywords_Matched", "Message_Type", "Forward_From", 
+      "Message_ID", "Channel", "Country", "Date", "Time", "Author", "Message_Text", 
+      "AI_Category", "AI_Reasoning", "Keywords_Matched", "Message_Type", "Forward_From", 
       "Media_Type", "Processed_Date"
    ],
    "CELERY_CONFIG": {

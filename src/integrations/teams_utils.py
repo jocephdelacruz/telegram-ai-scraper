@@ -74,33 +74,39 @@ class TeamsNotifier:
             LOGGER.writeLog(f"Error sending message to Teams: {e}")
             return False
 
-    def send_telegram_alert(self, message_data, ai_category="Significant", keywords_matched=None):
+    def send_message_alert(self, message_data):
         """
-        Send a formatted Telegram message alert to Teams
+        Send a formatted Telegram message alert to Teams with country support
         
         Args:
             message_data: Dictionary containing message information
-            ai_category: AI classification result
-            keywords_matched: List of matched keywords
             
         Returns:
             Boolean indicating success
         """
         try:
-            # Prepare the title
-            title = f"🚨 Significant Telegram Message Alert"
+            # Extract data
+            country_name = message_data.get('country_name', message_data.get('Country', 'Unknown'))
+            ai_category = message_data.get('AI_Category', 'Significant')
+            ai_reasoning = message_data.get('AI_Reasoning', 'No reasoning provided')
+            
+            # Prepare the title with country flag
+            country_flag = self._get_country_flag(country_name)
+            title = f"{country_flag} 🚨 Significant Telegram Message - {country_name}"
             
             # Prepare message content
-            message_text = message_data.get('Message_Text', 'No text content')
+            message_text = message_data.get('Message_Text', message_data.get('text', 'No text content'))
             if len(message_text) > 500:
                 message_text = message_text[:500] + "..."
 
             # Prepare facts for structured information
             facts = [
-                {"name": "Channel", "value": message_data.get('Channel', 'Unknown')},
+                {"name": "Country", "value": country_name},
+                {"name": "Channel", "value": message_data.get('Channel', message_data.get('channel', 'Unknown'))},
                 {"name": "Date & Time", "value": f"{message_data.get('Date', '')} {message_data.get('Time', '')}"},
                 {"name": "Author", "value": message_data.get('Author', 'Unknown')},
                 {"name": "AI Classification", "value": ai_category},
+                {"name": "AI Reasoning", "value": ai_reasoning[:200] + "..." if len(ai_reasoning) > 200 else ai_reasoning},
                 {"name": "Message Type", "value": message_data.get('Message_Type', 'text')},
             ]
 
@@ -113,24 +119,43 @@ class TeamsNotifier:
                 facts.append({"name": "Media Type", "value": message_data.get('Media_Type')})
 
             # Add matched keywords if available
-            if keywords_matched:
-                facts.append({"name": "Keywords Matched", "value": ", ".join(keywords_matched)})
-
-            # Determine color based on significance
-            color = "attention" if ai_category == "Significant" else "good"
+            keywords = message_data.get('Keywords_Matched', '')
+            if keywords:
+                facts.append({"name": "Keywords Matched", "value": keywords})
 
             # Create the message
             full_message = f"**Message Content:**\n\n{message_text}"
             
             # Add message ID for reference
-            if message_data.get('Message_ID'):
-                full_message += f"\n\n*Message ID: {message_data.get('Message_ID')}*"
+            message_id = message_data.get('Message_ID', message_data.get('id', ''))
+            if message_id:
+                full_message += f"\n\n*Message ID: {message_id}*"
 
-            return self.send_message(title, full_message, color, facts)
+            return self.send_message(title, full_message, "attention", facts)
 
         except Exception as e:
             LOGGER.writeLog(f"Error sending Telegram alert to Teams: {e}")
             return False
+
+    def send_telegram_alert(self, message_data, ai_category="Significant", keywords_matched=None):
+        """
+        Legacy method - redirects to send_message_alert for backward compatibility
+        """
+        return self.send_message_alert(message_data)
+
+    def _get_country_flag(self, country_name):
+        """Get emoji flag for country"""
+        flag_map = {
+            "Philippines": "🇵🇭",
+            "Singapore": "🇸🇬", 
+            "Malaysia": "🇲🇾",
+            "Thailand": "🇹🇭",
+            "Indonesia": "🇮🇩",
+            "Vietnam": "🇻🇳",
+            "Unknown": "🌏",
+            "unknown": "🌏"
+        }
+        return flag_map.get(country_name, "🌏")
 
     def send_system_alert(self, alert_type, message, details=None):
         """
