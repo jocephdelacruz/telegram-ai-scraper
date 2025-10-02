@@ -79,10 +79,14 @@ Edit `config.json` with your credentials and preferences:
 
 ```json
 {
-   "TELEGRAM_API_ID": "your_telegram_api_id",
-   "TELEGRAM_API_HASH": "your_telegram_api_hash", 
    "OPEN_AI_KEY": "your_openai_api_key",
-   "REDIS_URL": "redis://localhost:6379/0",
+   
+   "TELEGRAM_CONFIG": {
+      "API_ID": "your_telegram_api_id",
+      "API_HASH": "your_telegram_api_hash",
+      "PHONE_NUMBER": "your_phone_number",
+      "SESSION_FILE": "telegram_session.session"
+   },
    
    "COUNTRIES": {
       "country_code": {
@@ -99,7 +103,7 @@ Edit `config.json` with your credentials and preferences:
    },
    
    "MS_SHAREPOINT_ACCESS": { ... },
-   "CELERY_CONFIG": { ... }
+   "TELEGRAM_EXCEL_FIELDS": [ ... ]
 }
 ```
 
@@ -115,18 +119,33 @@ See [config_sample.json](config/config_sample.json) for complete configuration e
 
 For detailed configuration examples and migration guides, see the [Complete Enhancement Guide](docs/MULTI_COUNTRY_COMPLETE_GUIDE.md).
 
+**📋 For step-by-step instructions to run the project, see: [Running Guide](docs/RUNNING_GUIDE.md)**
+
 ## Usage
 
-### Quick Start (All-in-One)
+### Quick Start (Recommended)
 ```bash
-# Start everything with the deployment script
+# 1. First-time setup
+chmod +x scripts/setup.sh
+./scripts/setup.sh
+
+# 2. Configure your settings
+cp config/config_sample.json config/config.json
+# Edit config/config.json with your actual API keys and settings
+
+# 3. Start everything with one command
 chmod +x scripts/deploy_celery.sh
 ./scripts/deploy_celery.sh
 ```
 
 ### Manual Deployment
 
-#### 1. Start Celery Workers
+#### 1. Activate Virtual Environment
+```bash
+source telegram-ai-scraper_env/bin/activate
+```
+
+#### 2. Start Celery Workers (in separate terminals)
 ```bash
 # Terminal 1 - Main processing workers
 celery -A src.tasks.telegram_celery_tasks worker --loglevel=info --queues=telegram_processing --concurrency=4
@@ -141,18 +160,16 @@ celery -A src.tasks.telegram_celery_tasks worker --loglevel=info --queues=sharep
 celery -A src.tasks.telegram_celery_tasks worker --loglevel=info --queues=backup --concurrency=1
 ```
 
-#### 2. Start Main Application
+#### 3. Start Main Application
 ```bash
 # Terminal 5 - Test connections first
-python3 run.py --mode test
-# OR
-python3 src/core/main.py --mode test
+python3 src/core/main.py --config config/config.json --mode test
 
 # Historical scraping
-python3 run.py --mode historical --limit 100
+python3 src/core/main.py --config config/config.json --mode historical --limit 100
 
 # Real-time monitoring
-python3 run.py --mode monitor
+python3 src/core/main.py --config config/config.json --mode monitor
 ```
 
 ### Monitor System Status
@@ -363,10 +380,10 @@ celery -A src.tasks.telegram_celery_tasks worker --queues=notifications --concur
 ### Getting Help
 
 1. Check the log files in the `logs/` directory
-2. Run in test mode to verify connections: `python3 main.py --mode test`
+2. Run in test mode to verify connections: `python3 src/core/main.py --config config/config.json --mode test`
 3. Monitor Celery workers: `celery -A src.tasks.telegram_celery_tasks inspect stats`
 4. View task results: `celery -A src.tasks.telegram_celery_tasks result <task_id>`
-5. Enable debug logging for detailed information
+5. Use the management scripts: `./scripts/status.sh` or `./scripts/deploy_celery.sh status`
 
 ## Documentation
 
