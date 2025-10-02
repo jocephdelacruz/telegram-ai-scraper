@@ -1,9 +1,12 @@
 {
-   "TELEGRAM_API_ID": "your_telegram_api_id",
-   "TELEGRAM_API_HASH": "your_telegram_api_hash",
-   "TELEGRAM_SESSION_FILE": "session_name",
    "OPEN_AI_KEY": "your_openai_api_key",
-   "REDIS_URL": "redis://localhost:6379/0",
+   
+   "TELEGRAM_CONFIG": {
+      "API_ID": "your_telegram_api_id",
+      "API_HASH": "your_telegram_api_hash",
+      "PHONE_NUMBER": "your_phone_number",
+      "SESSION_FILE": "telegram_session.session"
+   },
    
    "COUNTRIES": {
       "philippines": {
@@ -114,16 +117,8 @@
       "SharepointSite": "your_sharepoint_site_url"
    },
    "TELEGRAM_EXCEL_FIELDS": [
-      "Message_ID", "Channel", "Date", "Time", "Author", "Message_Text", 
-      "AI_Category", "Keywords_Matched", "Message_Type", "Forward_From", 
-      "Media_Type", "Processed_Date"
-   ],
-   "CELERY_CONFIG": {
-      "broker_url": "redis://localhost:6379/0",
-      "result_backend": "redis://localhost:6379/0",
-      "worker_concurrency": 4,
-      "task_time_limit": 300,
-      "worker_prefetch_multiplier": 1,
-      "result_expires": 3600
-   }
+      "Message_ID", "Channel", "Country", "Date", "Time", "Author", "Message_Text", 
+      "AI_Category", "AI_Reasoning", "Keywords_Matched", "Message_Type", 
+      "Forward_From", "Media_Type", "Processed_Date"
+   ]
 }
