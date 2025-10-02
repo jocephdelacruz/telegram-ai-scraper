@@ -1,0 +1,55 @@
+{
+   "USERS": {
+      "admin": "your_admin_password"
+   },
+   "OPEN_AI_KEY": "your_openai_api_key_here",
+   "TELEGRAM_CONFIG": {
+      "API_ID": "your_telegram_api_id",
+      "API_HASH": "your_telegram_api_hash",
+      "PHONE_NUMBER": "your_phone_number",
+      "CHANNELS_TO_MONITOR": ["@channel1", "@channel2"],
+      "SESSION_FILE": "telegram_session.session"
+   },
+   "MICROSOFT_TEAMS_CONFIG": {
+      "WEBHOOK_URL": "your_teams_webhook_url_here",
+      "CHANNEL_NAME": "Telegram Alerts"
+   },
+   "MS_SHAREPOINT_ACCESS": {
+      "ClientID": "your_sharepoint_client_id",
+      "ClientSecret": "your_sharepoint_client_secret",
+      "TenantID": "your_tenant_id",
+      "SharepointSite": "your_sharepoint_site",
+      "SiteName": "your_site_name",
+      "FolderPath": "/path/to/excel/file.xlsx",
+      "SheetName": "Sheet1",
+      "StartingCell": "A1",
+      "RangeAddressToClear": "A1:Z800"
+   },
+   "MESSAGE_FILTERING": {
+      "SIGNIFICANT_KEYWORDS": [
+         "breaking news", "alert", "urgent", "emergency", "crisis", "attack", "security", 
+         "cyber", "breach", "hack", "vulnerability", "malware", "ransomware", "phishing",
+         "data leak", "incident", "threat", "suspicious", "fraud", "scam", "investigation"
+      ],
+      "TRIVIAL_KEYWORDS": [
+         "weather", "sports", "entertainment", "celebrity", "gossip", "fashion", "food",
+         "travel", "lifestyle", "health tips", "recipe", "horoscope", "quiz", "game"
+      ],
+      "EXCLUDE_KEYWORDS": [
+         "advertisement", "promo", "discount", "sale", "buy now", "limited time"
+      ]
+   },
+   "TELEGRAM_EXCEL_FIELDS": [
+      "Message_ID", "Channel", "Date", "Time", "Author", "Message_Text", 
+      "AI_Category", "Keywords_Matched", "Message_Type", "Forward_From", 
+      "Media_Type", "Processed_Date"
+   ],
+   "CELERY_CONFIG": {
+      "broker_url": "redis://localhost:6379/0",
+      "result_backend": "redis://localhost:6379/0",
+      "worker_concurrency": 4,
+      "task_time_limit": 300,
+      "worker_prefetch_multiplier": 1,
+      "result_expires": 3600
+   }
+}

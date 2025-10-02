@@ -1,3 +1,2 @@
-feeds/
 __pycache__/
-logs/
+config/config.json
