@@ -123,8 +123,22 @@ class TeamsNotifier:
             if keywords:
                 facts.append({"name": "Keywords Matched", "value": keywords})
 
+            # Add translation information if available
+            if message_data.get('Was_Translated'):
+                original_language = message_data.get('Original_Language', 'Unknown')
+                facts.append({"name": "Original Language", "value": original_language})
+                facts.append({"name": "Translation", "value": "✅ Translated to English"})
+
             # Create the message
-            full_message = f"**Message Content:**\n\n{message_text}"
+            message_content_header = "**Message Content (English):**" if message_data.get('Was_Translated') else "**Message Content:**"
+            full_message = f"{message_content_header}\n\n{message_text}"
+            
+            # If translated, also show original text (truncated)
+            if message_data.get('Was_Translated') and message_data.get('Original_Text'):
+                original_text = message_data.get('Original_Text', '')
+                if len(original_text) > 300:
+                    original_text = original_text[:300] + "..."
+                full_message += f"\n\n**Original Text ({message_data.get('Original_Language', 'Unknown')}):**\n{original_text}"
             
             # Add message ID for reference
             message_id = message_data.get('Message_ID', message_data.get('id', ''))

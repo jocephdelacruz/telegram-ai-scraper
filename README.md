@@ -7,8 +7,10 @@ An intelligent, high-performance Telegram message scraper that uses OpenAI to an
 - **Real-time Monitoring**: Continuously monitors specified Telegram channels for new messages using asyncio
 - **Distributed Processing**: Uses Celery workers for parallel processing of AI analysis, notifications, and data storage
 - **Intelligent Message Filtering**: Country-specific keyword filtering with AI fallback for optimal performance and accuracy
+- **Multi-language Support**: Automatic language detection and translation to English for non-English messages
+- **Cost-effective Translation**: Smart heuristics to avoid unnecessary API calls for obviously English text
 - **Teams Integration**: Sends formatted alerts to Microsoft Teams channels for significant messages
-- **SharePoint Storage**: Automatically stores significant messages in SharePoint Excel files
+- **SharePoint Storage**: Automatically stores all messages (significant and trivial) in SharePoint Excel files with translation info
 - **Historical Scraping**: Can scrape and analyze past messages from channels
 - **Fault Tolerance**: Automatic task retries and error recovery with Celery
 - **Scalable Architecture**: Add more workers to handle increased message volume
@@ -206,12 +208,14 @@ The system uses a **hybrid asyncio + Celery architecture** for optimal performan
 2. **Country Detection**: Determines which country configuration to use based on source channel
 3. **Task Queuing**: New messages are immediately queued as Celery tasks (non-blocking)  
 4. **Distributed Processing**: Multiple Celery workers process tasks in parallel:
-   - **Smart Filtering**: Country-specific keyword filtering for faster classification
-   - **AI Analysis**: OpenAI analyzes ambiguous cases with country context
-   - **Dual Storage**: ALL messages stored in SharePoint (Significant/Trivial sheets)
-   - **Smart Notifications**: Only significant messages trigger Teams alerts
+   - **Language Detection**: Automatic detection of message language with cost-effective heuristics
+   - **Translation**: Non-English messages automatically translated to English for analysis
+   - **Smart Filtering**: Country-specific keyword filtering on translated text for faster classification
+   - **AI Analysis**: OpenAI analyzes ambiguous cases with country context using English text
+   - **Dual Storage**: ALL messages stored in SharePoint (Significant/Trivial sheets) with translation metadata
+   - **Smart Notifications**: Only significant messages trigger Teams alerts (showing both original and translated text)
    - **Country Routing**: Messages routed to country-specific Teams/SharePoint
-   - **Backup**: Country-specific CSV storage (separate files for significant/trivial)
+   - **Backup**: Country-specific CSV storage (separate files for significant/trivial) with translation info
 5. **Error Handling**: Failed tasks automatically retry with exponential backoff
 6. **Monitoring**: All activities logged with classification methods and task IDs### Queue Architecture
 ```
@@ -270,6 +274,45 @@ telegram-ai-scraper/
 ├── pids/                          # Process ID files
 └── telegram-ai-scraper_env/      # Python virtual environment
 ```
+
+## Multi-language Support
+
+The system now includes comprehensive multi-language support for processing non-English Telegram messages:
+
+### Translation Workflow
+
+1. **Language Detection**: Each message is first analyzed to determine if it's in English
+2. **Cost Optimization**: Uses smart heuristics to avoid unnecessary API calls for obviously English text
+3. **Translation**: Non-English messages are automatically translated to English using OpenAI
+4. **Analysis**: All significance analysis (keywords and AI) is performed on the English text
+5. **Storage**: Both original and translated text are stored in SharePoint and CSV files
+
+### Translation Features
+
+- **Smart Detection**: Heuristic checks for common English words and character sets before using AI
+- **Single API Call**: Language detection and translation combined in one OpenAI request
+- **Metadata Preservation**: Original language and translation status stored for reference
+- **Teams Alerts**: Show both original and translated text in notifications
+- **Cost Effective**: Minimizes API usage through intelligent preprocessing
+
+### Supported Languages
+
+The system can detect and translate from any language supported by OpenAI, including but not limited to:
+- Arabic (العربية)
+- French (Français)
+- Spanish (Español)
+- German (Deutsch)
+- Chinese (中文)
+- Russian (Русский)
+- And many more...
+
+### Excel Fields for Translation
+
+New fields added to Excel output:
+- `Original_Text`: The original message text before translation
+- `Original_Language`: Detected language of the original message
+- `Was_Translated`: Boolean indicating if translation was performed
+- `Message_Text`: Contains the English text (translated or original)
 
 ## Logging
 

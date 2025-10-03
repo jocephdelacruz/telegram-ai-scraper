@@ -31,21 +31,39 @@ def process_telegram_message(self, message_data, config):
         
         LOGGER.writeLog(f"Processing message {message_id} from {channel} ({country_code})")
         
-        # AI Analysis with country-specific filtering
+        # AI Analysis with country-specific filtering (includes translation if needed)
         openai_processor = OpenAIProcessor(config['OPEN_AI_KEY'])
         country_config = config['COUNTRIES'].get(country_code, {}) if country_code else {}
         
-        is_significant, matched_keywords, classification_method = openai_processor.isMessageSignificant(
+        is_significant, matched_keywords, classification_method, translation_info = openai_processor.isMessageSignificant(
             message_data['text'],
             country_config=country_config
         )
+        
+        # Handle translation - use translated text for storage and alerts
+        original_text = message_data['text']
+        if not translation_info['is_english'] and translation_info['translated_text']:
+            # Use translated text for storage and alerts
+            message_data['text'] = translation_info['translated_text']
+            message_data['Message_Text'] = translation_info['translated_text']
+            # Store original text and language info
+            message_data['Original_Text'] = original_text
+            message_data['Original_Language'] = translation_info['original_language']
+            message_data['Was_Translated'] = True
+            LOGGER.writeLog(f"Message {message_id} translated from {translation_info['original_language']} to English")
+        else:
+            # Mark as not translated
+            message_data['Original_Text'] = original_text
+            message_data['Original_Language'] = translation_info['original_language']
+            message_data['Was_Translated'] = False
         
         # Build analysis result structure
         analysis_result = {
             'is_significant': is_significant,
             'matched_keywords': matched_keywords,
             'classification_method': classification_method,
-            'reasoning': f"Classified as {'significant' if is_significant else 'trivial'} using {classification_method}"
+            'reasoning': f"Classified as {'significant' if is_significant else 'trivial'} using {classification_method}",
+            'translation_info': translation_info
         }
         
         # Add analysis results to message data

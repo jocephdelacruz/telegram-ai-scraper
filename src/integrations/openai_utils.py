@@ -35,8 +35,123 @@ class OpenAIProcessor:
       self.apikey = key
 
 
+   def _isLikelyEnglish(self, text):
+      """
+      Quick heuristic check to determine if text is likely English.
+      This helps avoid unnecessary API calls for obviously English text.
+      """
+      # Common English words that appear frequently
+      common_english_words = [
+         'the', 'and', 'is', 'in', 'to', 'of', 'a', 'for', 'with', 'on', 'at', 'by',
+         'this', 'that', 'from', 'they', 'we', 'be', 'have', 'an', 'as', 'are', 'was',
+         'but', 'not', 'or', 'had', 'will', 'would', 'there', 'been', 'their'
+      ]
+      
+      # Convert to lowercase for comparison
+      text_lower = text.lower()
+      words = text_lower.split()
+      
+      if len(words) < 3:
+         # For very short messages, default to checking with AI
+         return False
+      
+      # Count how many common English words are present
+      english_word_count = sum(1 for word in words if any(eng_word in word for eng_word in common_english_words))
+      
+      # If more than 25% of words contain common English words, likely English
+      english_ratio = english_word_count / len(words)
+      
+      # Also check for non-Latin characters (Arabic, Chinese, etc.)
+      has_non_latin = any(ord(char) > 127 for char in text if char.isalpha())
+      
+      # If high English word ratio and no non-Latin characters, likely English
+      if english_ratio > 0.25 and not has_non_latin:
+         return True
+      
+      return False
+
+
+   def detectLanguageAndTranslate(self, text):
+      """
+      Detect if text is in English, and translate to English if not.
+      Returns tuple: (is_english, translated_text, original_language)
+      Cost-effective: Uses heuristic check first, then single API call for detection and translation.
+      """
+      try:
+         # Quick heuristic check first to save API calls
+         if self._isLikelyEnglish(text):
+            LOGGER.writeLog('OpenAIProcessor: Text appears to be English (heuristic), skipping translation')
+            return True, text, "English"
+         
+         # If not obviously English, use AI for detection and translation
+         prompt = f"""
+         Analyze the following text and determine:
+         1. What language it is written in
+         2. If it's not English, provide an English translation
+         3. If it's already English, just return the original text
+
+         Please respond in this exact format:
+         Language: [detected language]
+         Translation: [English translation or original text if already English]
+
+         Text to analyze: "{text}"
+         """
+
+         response = self.openai_client.chat.completions.create(
+            model=self.openai_model,
+            messages=[
+               {"role": "system", "content": "You are a language detection and translation assistant. Be accurate and concise."},
+               {"role": "user", "content": prompt}
+            ],
+            max_tokens=self.max_tokens,
+            temperature=0.3  # Lower temperature for more consistent output format
+         )
+
+         if response.choices[0] and response.choices[0].message.content:
+            result = response.choices[0].message.content.strip()
+            
+            # Parse the response
+            lines = result.split('\n')
+            detected_language = "Unknown"
+            translated_text = text  # Default to original text
+            
+            for line in lines:
+               if line.startswith("Language:"):
+                  detected_language = line.replace("Language:", "").strip()
+               elif line.startswith("Translation:"):
+                  translated_text = line.replace("Translation:", "").strip()
+            
+            is_english = detected_language.lower() in ['english', 'en', 'eng']
+            
+            LOGGER.writeLog(f'OpenAIProcessor: Language detected: {detected_language}, Is English: {is_english}')
+            
+            return is_english, translated_text, detected_language
+         
+         # Default fallback
+         LOGGER.writeLog('OpenAIProcessor: Language detection failed, assuming English')
+         return True, text, "English"
+         
+      except Exception as e:
+         LOGGER.writeLog(f'OpenAIProcessor: detectLanguageAndTranslate - Exception: {e}')
+         # On error, assume English and return original text
+         return True, text, "Unknown"
+
+
    def isMessageSignificant(self, message, significant_keywords=None, trivial_keywords=None, exclude_keywords=None, country_config=None):
       try:
+         # First, detect language and translate if necessary
+         is_english, translated_message, detected_language = self.detectLanguageAndTranslate(message)
+         
+         # Store translation info for later use
+         translation_info = {
+            'is_english': is_english,
+            'original_language': detected_language,
+            'translated_text': translated_message if not is_english else None
+         }
+         
+         # Use translated text for analysis (or original if already English)
+         analysis_text = translated_message
+         
          # Use country-specific keywords if provided
          if country_config and 'message_filtering' in country_config:
             filtering = country_config['message_filtering']
@@ -52,47 +167,49 @@ class OpenAIProcessor:
          if exclude_keywords is None:
             exclude_keywords = ["advertisement", "promo", "discount", "sale"]
          
-         # First check if message contains exclude keywords
-         message_lower = message.lower()
+         # First check if message contains exclude keywords (using translated text)
+         analysis_text_lower = analysis_text.lower()
          for keyword in exclude_keywords:
-            if keyword.lower() in message_lower:
+            if keyword.lower() in analysis_text_lower:
                LOGGER.writeLog(f'OpenAIProcessor: Message excluded due to keyword: {keyword}')
-               return False, [], "excluded"
+               return False, [], "excluded", translation_info
 
-                  # Check for significant keywords match
+         # Check for significant keywords match
          matched_significant = []
          for keyword in significant_keywords:
-            if keyword.lower() in message_lower:
+            if keyword.lower() in analysis_text_lower:
                matched_significant.append(keyword)
          
          # Check for trivial keywords match
          matched_trivial = []
          for keyword in trivial_keywords:
-            if keyword.lower() in message_lower:
+            if keyword.lower() in analysis_text_lower:
                matched_trivial.append(keyword)
          
          # If both significant and trivial keywords match, use AI to decide
          if matched_significant and matched_trivial:
             LOGGER.writeLog(f'OpenAIProcessor: Mixed keywords found - using AI analysis')
-            return self._analyzeWithAI(message, significant_keywords, trivial_keywords, country_config)
+            is_significant, keywords, method = self._analyzeWithAI(analysis_text, significant_keywords, trivial_keywords, country_config)
+            return is_significant, keywords, method, translation_info
          
          # If only significant keywords match, classify as significant
          if matched_significant and not matched_trivial:
             LOGGER.writeLog(f'OpenAIProcessor: Message classified as Significant by keywords: {matched_significant}')
-            return True, matched_significant, "keyword_significant"
+            return True, matched_significant, "keyword_significant", translation_info
          
          # If only trivial keywords match, classify as trivial
          if matched_trivial and not matched_significant:
             LOGGER.writeLog(f'OpenAIProcessor: Message classified as Trivial by keywords: {matched_trivial}')
-            return False, matched_trivial, "keyword_trivial"
+            return False, matched_trivial, "keyword_trivial", translation_info
          
          # No keywords matched, use AI analysis
          LOGGER.writeLog(f'OpenAIProcessor: No keywords matched - using AI analysis')
-         return self._analyzeWithAI(message, significant_keywords, trivial_keywords, country_config)
+         is_significant, keywords, method = self._analyzeWithAI(analysis_text, significant_keywords, trivial_keywords, country_config)
+         return is_significant, keywords, method, translation_info
          
       except Exception as e:
          LOGGER.writeLog(f'OpenAIProcessor: isMessageSignificant - Exception: {e}')
-         return False, [], "error"
+         return False, [], "error", {'is_english': True, 'original_language': 'Unknown', 'translated_text': None}
 
 
    def _analyzeWithAI(self, message, significant_keywords, trivial_keywords, country_config=None):
