@@ -96,7 +96,7 @@ start_worker() {
     
     print_status "Starting $worker_name worker (queue: $queue, concurrency: $concurrency)..."
     
-    nohup celery -A src.tasks.telegram_celery_tasks worker \
+    nohup celery -A src.tasks.telegram_celery_tasks.celery worker \
         --loglevel=$log_level \
         --queues=$queue \
         --concurrency=$concurrency \
@@ -127,7 +127,7 @@ start_worker() {
 start_beat() {
     print_status "Starting Celery Beat scheduler..."
     
-    nohup celery -A src.tasks.telegram_celery_tasks beat \
+    nohup celery -A src.tasks.telegram_celery_tasks.celery beat \
         --loglevel=info \
         --logfile="$LOG_DIR/celery_beat.log" \
         --pidfile="$PID_DIR/celery_beat.pid" \
@@ -152,7 +152,7 @@ start_beat() {
 # Function to check if workers are running
 check_workers() {
     print_status "Checking worker status..."
-    celery -A src.tasks.telegram_celery_tasks inspect active > /dev/null 2>&1
+    celery -A src.tasks.telegram_celery_tasks.celery inspect active > /dev/null 2>&1
     if [ $? -eq 0 ]; then
         print_success "Workers are responding"
         return 0
@@ -206,13 +206,13 @@ show_status() {
     print_status "Checking Celery workers status..."
     
     echo -e "\n${YELLOW}Active Workers:${NC}"
-    celery -A src.tasks.telegram_celery_tasks inspect active 2>/dev/null || print_error "Cannot connect to Celery"
+    celery -A src.tasks.telegram_celery_tasks.celery inspect active 2>/dev/null || print_error "Cannot connect to Celery"
     
     echo -e "\n${YELLOW}Registered Tasks:${NC}"
-    celery -A src.tasks.telegram_celery_tasks inspect registered 2>/dev/null || print_error "Cannot connect to Celery"
+    celery -A src.tasks.telegram_celery_tasks.celery inspect registered 2>/dev/null || print_error "Cannot connect to Celery"
     
     echo -e "\n${YELLOW}Worker Statistics:${NC}"
-    celery -A src.tasks.telegram_celery_tasks inspect stats 2>/dev/null || print_error "Cannot connect to Celery"
+    celery -A src.tasks.telegram_celery_tasks.celery inspect stats 2>/dev/null || print_error "Cannot connect to Celery"
     
     echo -e "\n${YELLOW}PID Files:${NC}"
     for pidfile in "$PID_DIR"/celery_*.pid; do
@@ -274,7 +274,7 @@ case "${1:-deploy}" in
             echo ""
             if [[ $REPLY =~ ^[Yy]$ ]]; then
                 print_status "Starting Flower monitoring..."
-                nohup celery -A src.tasks.telegram_celery_tasks flower --port=5555 > "$LOG_DIR/flower.log" 2>&1 &
+                nohup celery -A src.tasks.telegram_celery_tasks.celery flower --port=5555 > "$LOG_DIR/flower.log" 2>&1 &
                 echo $! > "$PID_DIR/flower.pid"
                 print_success "Flower started at http://localhost:5555"
             fi

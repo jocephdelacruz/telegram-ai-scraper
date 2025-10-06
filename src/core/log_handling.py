@@ -1,6 +1,5 @@
 from datetime import datetime     # For adding timestamp in logs
 import os, time                   # For setting up timezone
-import file_handling as fh        # My custom class for file handling
 
 
 class LogHandling:
@@ -18,8 +17,21 @@ class LogHandling:
       os.environ['TZ'] = self.log_tz
       time.tzset()
     
-    file = fh.FileHandling(self.log_file)
-    return file.write(self.addLogPrefix() + text)
+    # Direct file writing to avoid circular imports
+    log_content = self.addLogPrefix() + text
+    try:
+      # Ensure directory exists
+      directory = os.path.dirname(self.log_file)
+      if directory and not os.path.exists(directory):
+        os.makedirs(directory)
+        
+      # Append to log file
+      with open(self.log_file, 'a', encoding='utf-8') as file:
+        file.write(log_content + '\n')
+      return True
+    except Exception as e:
+      print(f"Error writing to log file {self.log_file}: {e}")
+      return False
 
 
   def addLogPrefix(self):
@@ -28,5 +40,10 @@ class LogHandling:
 
 
   def clearLog(self):
-    file = fh.FileHandling(log_file)
-    return file.write("", True)    
+    try:
+      with open(self.log_file, 'w', encoding='utf-8') as file:
+        file.write("")  # Clear the file
+      return True
+    except Exception as e:
+      print(f"Error clearing log file {self.log_file}: {e}")
+      return False    

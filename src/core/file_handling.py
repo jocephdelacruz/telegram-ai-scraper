@@ -2,11 +2,19 @@ import os
 import json
 import csv
 from datetime import datetime
-import log_handling as lh
 
 LOG_FILE = "./logs/file_handling.log"
 LOG_TZ = "Asia/Manila"
-LOGGER = lh.LogHandling(LOG_FILE, LOG_TZ)
+
+# Initialize logger with lazy loading to avoid circular imports
+LOGGER = None
+
+def get_logger():
+    global LOGGER
+    if LOGGER is None:
+        from src.core.log_handling import LogHandling
+        LOGGER = LogHandling(LOG_FILE, LOG_TZ)
+    return LOGGER
 
 
 class FileHandling:
@@ -27,9 +35,9 @@ class FileHandling:
             directory = os.path.dirname(self.filename)
             if directory and not os.path.exists(directory):
                 os.makedirs(directory)
-                LOGGER.writeLog(f"Created directory: {directory}")
+                get_logger().writeLog(f"Created directory: {directory}")
         except Exception as e:
-            LOGGER.writeLog(f"Error creating directory for {self.filename}: {e}")
+            get_logger().writeLog(f"Error creating directory for {self.filename}: {e}")
 
 
     def write(self, content, overwrite=False):
@@ -49,7 +57,7 @@ class FileHandling:
                 file.write(content + '\n')
             return True
         except Exception as e:
-            LOGGER.writeLog(f"Error writing to file {self.filename}: {e}")
+            get_logger().writeLog(f"Error writing to file {self.filename}: {e}")
             return False
 
 
@@ -67,7 +75,7 @@ class FileHandling:
             with open(self.filename, 'r', encoding='utf-8') as file:
                 return file.read()
         except Exception as e:
-            LOGGER.writeLog(f"Error reading file {self.filename}: {e}")
+            get_logger().writeLog(f"Error reading file {self.filename}: {e}")
             return None
 
 
@@ -85,7 +93,7 @@ class FileHandling:
             with open(self.filename, 'r', encoding='utf-8') as file:
                 return json.load(file)
         except Exception as e:
-            LOGGER.writeLog(f"Error reading JSON from {self.filename}: {e}")
+            get_logger().writeLog(f"Error reading JSON from {self.filename}: {e}")
             return None
 
 
@@ -105,7 +113,7 @@ class FileHandling:
                 json.dump(data, file, indent=indent, ensure_ascii=False)
             return True
         except Exception as e:
-            LOGGER.writeLog(f"Error writing JSON to {self.filename}: {e}")
+            get_logger().writeLog(f"Error writing JSON to {self.filename}: {e}")
             return False
 
 
@@ -142,7 +150,7 @@ class FileHandling:
                         
             return True
         except Exception as e:
-            LOGGER.writeLog(f"Error appending to CSV {self.filename}: {e}")
+            get_logger().writeLog(f"Error appending to CSV {self.filename}: {e}")
             return False
 
 
@@ -164,7 +172,7 @@ class FileHandling:
                     data.append(row)
             return data
         except Exception as e:
-            LOGGER.writeLog(f"Error reading CSV {self.filename}: {e}")
+            get_logger().writeLog(f"Error reading CSV {self.filename}: {e}")
             return None
 
 
@@ -183,10 +191,10 @@ class FileHandling:
         try:
             if os.path.exists(self.filename):
                 os.remove(self.filename)
-                LOGGER.writeLog(f"Deleted file: {self.filename}")
+                get_logger().writeLog(f"Deleted file: {self.filename}")
             return True
         except Exception as e:
-            LOGGER.writeLog(f"Error deleting file {self.filename}: {e}")
+            get_logger().writeLog(f"Error deleting file {self.filename}: {e}")
             return False
 
 
@@ -202,7 +210,7 @@ class FileHandling:
                 return os.path.getsize(self.filename)
             return 0
         except Exception as e:
-            LOGGER.writeLog(f"Error getting size of {self.filename}: {e}")
+            get_logger().writeLog(f"Error getting size of {self.filename}: {e}")
             return 0
 
 
@@ -219,7 +227,7 @@ class FileHandling:
                 return datetime.fromtimestamp(timestamp)
             return None
         except Exception as e:
-            LOGGER.writeLog(f"Error getting modification time of {self.filename}: {e}")
+            get_logger().writeLog(f"Error getting modification time of {self.filename}: {e}")
             return None
 
 
@@ -250,8 +258,8 @@ class FileHandling:
             with open(backup_filename, 'wb') as backup:
                 backup.write(content)
             
-            LOGGER.writeLog(f"Created backup: {backup_filename}")
+            get_logger().writeLog(f"Created backup: {backup_filename}")
             return True
         except Exception as e:
-            LOGGER.writeLog(f"Error creating backup of {self.filename}: {e}")
+            get_logger().writeLog(f"Error creating backup of {self.filename}: {e}")
             return False
