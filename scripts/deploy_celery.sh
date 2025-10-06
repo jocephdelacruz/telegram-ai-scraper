@@ -13,7 +13,7 @@ NC='\033[0m' # No Color
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-VENV_DIR="$PROJECT_DIR/telegram-ai-scraper_env"
+VENV_DIR="$PROJECT_DIR/../../telegram-ai-scraper_env"
 LOG_DIR="$PROJECT_DIR/logs"
 PID_DIR="$PROJECT_DIR/pids"
 DATA_DIR="$PROJECT_DIR/data"
@@ -53,7 +53,7 @@ check_prerequisites() {
     
     # Check if virtual environment exists
     if [ ! -d "$VENV_DIR" ]; then
-        print_error "Virtual environment not found. Run setup.sh first."
+        print_error "Virtual environment not found at $VENV_DIR. Run setup.sh first."
         exit 1
     fi
 

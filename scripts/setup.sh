@@ -6,6 +6,7 @@
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+VENV_PATH="../../telegram-ai-scraper_env"
 
 cd "$PROJECT_DIR"
 
@@ -66,14 +67,16 @@ else
 fi
 
 # Create virtual environment if it doesn't exist
-if [ ! -d "telegram-ai-scraper_env" ]; then
-    echo "Creating virtual environment..."
-    python3 -m venv telegram-ai-scraper_env
+if [ ! -d "$VENV_PATH" ]; then
+    echo "Creating virtual environment at $VENV_PATH..."
+    python3 -m venv "$VENV_PATH"
+else
+    echo "Virtual environment already exists at $VENV_PATH"
 fi
 
 # Activate virtual environment
 echo "Activating virtual environment..."
-source telegram-ai-scraper_env/bin/activate
+source "$VENV_PATH/bin/activate"
 
 # Upgrade pip
 echo "Upgrading pip..."

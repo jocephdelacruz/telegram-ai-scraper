@@ -1,2 +1,7 @@
 __pycache__/
 config/config.json
+data/
+backups/
+logs/
+pids/
+*.sqlite3

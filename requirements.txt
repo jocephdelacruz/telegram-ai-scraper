@@ -1,5 +1,5 @@
 flask==3.0.3
-openai==1.5.2
+openai==2.1.0
 celery==5.4.0
 redis==5.0.8
 requests==2.32.3
