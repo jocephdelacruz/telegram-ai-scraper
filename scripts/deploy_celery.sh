@@ -188,20 +188,118 @@ start_flower() {
 
 # Function to stop all workers
 stop_all_workers() {
-    print_status "Stopping workers + beat + flower..."
+    local force_mode=false
+    if [[ "$1" == "--force" ]]; then
+        force_mode=true
+    fi
+    
+    if [[ "$force_mode" == "true" ]]; then
+        print_status "Force stopping all services immediately..."
+    else
+        print_status "Gracefully stopping all services..."
+        echo ""
+        echo "This will stop all Celery workers, Beat scheduler, and Flower monitoring."
+        read -p "Continue? (y/n): " -n 1 -r
+        echo ""
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            print_warning "Stop operation cancelled"
+            return 0
+        fi
+    fi
+    
+    # Stop individual services with detailed reporting
+    local stopped_count=0
+    local total_services=0
+    
+    echo ""
+    print_status "Stopping individual services..."
+    echo "─────────────────────────────────"
+    
     for pidfile in "$PID_DIR"/celery_*.pid "$PID_DIR/flower.pid"; do
         [ -f "$pidfile" ] || continue
-        pid=$(cat "$pidfile")
-        name=$(basename "$pidfile" .pid)
-        if kill -0 "$pid" 2>/dev/null; then
-            print_status "Stopping $name (PID $pid)"
-            kill "$pid"
-            sleep 2
-            kill -0 "$pid" 2>/dev/null && kill -9 "$pid"
+        
+        local pid=$(cat "$pidfile" 2>/dev/null)
+        local name=$(basename "$pidfile" .pid)
+        total_services=$((total_services + 1))
+        
+        if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+            print_status "Stopping $name (PID: $pid)..."
+            
+            if [[ "$force_mode" == "true" ]]; then
+                # Force kill immediately
+                kill -9 "$pid" 2>/dev/null
+                sleep 1
+            else
+                # Graceful shutdown with timeout
+                kill -TERM "$pid" 2>/dev/null
+                
+                # Wait up to 5 seconds for graceful shutdown
+                local timeout=5
+                while [[ $timeout -gt 0 ]] && kill -0 "$pid" 2>/dev/null; do
+                    sleep 1
+                    timeout=$((timeout - 1))
+                done
+                
+                # Force kill if still running
+                if kill -0 "$pid" 2>/dev/null; then
+                    print_warning "Force killing $name (graceful shutdown timeout)"
+                    kill -9 "$pid" 2>/dev/null
+                    sleep 1
+                fi
+            fi
+            
+            # Verify process is stopped
+            if kill -0 "$pid" 2>/dev/null; then
+                print_error "Failed to stop $name (PID: $pid)"
+            else
+                print_success "$name stopped successfully"
+                stopped_count=$((stopped_count + 1))
+            fi
+        else
+            print_warning "$name was not running"
         fi
+        
+        # Clean up PID file
         rm -f "$pidfile"
     done
-    print_success "All stopped"
+    
+    # Nuclear option for any remaining processes
+    if [[ "$force_mode" == "true" ]] || [[ $stopped_count -lt $total_services ]]; then
+        echo ""
+        if [[ "$force_mode" != "true" ]]; then
+            read -p "Force kill any remaining celery processes? (y/n): " -n 1 -r
+            echo ""
+        fi
+        
+        if [[ "$force_mode" == "true" ]] || [[ $REPLY =~ ^[Yy]$ ]]; then
+            print_status "Cleaning up any remaining celery processes..."
+            
+            # Find and kill any remaining celery processes
+            local remaining_pids=$(pgrep -f "celery.*src.tasks.telegram_celery_tasks" 2>/dev/null || true)
+            if [[ -n "$remaining_pids" ]]; then
+                print_warning "Force killing remaining processes: $remaining_pids"
+                pkill -9 -f "celery.*src.tasks.telegram_celery_tasks" 2>/dev/null || true
+                sleep 2
+            fi
+            
+            # Clean up any remaining PID files
+            rm -f "$PID_DIR"/celery_*.pid "$PID_DIR/flower.pid" 2>/dev/null || true
+            print_success "Nuclear cleanup completed"
+        fi
+    fi
+    
+    echo ""
+    echo "=========================================="
+    if [[ $stopped_count -eq $total_services ]] && [[ $total_services -gt 0 ]]; then
+        print_success "All services stopped successfully ($stopped_count/$total_services)"
+    elif [[ $total_services -eq 0 ]]; then
+        print_warning "No running services found"
+    else
+        print_warning "Some services may still be running ($stopped_count/$total_services stopped)"
+    fi
+    echo "=========================================="
+    echo ""
+    echo "To restart services: ./scripts/deploy_celery.sh start"
 }
 
 
@@ -338,7 +436,11 @@ case "${1:-deploy}" in
         fi
         ;;
     "stop")
-        stop_all_workers
+        if [[ "$2" == "--force" ]]; then
+            stop_all_workers --force
+        else
+            stop_all_workers
+        fi
         ;;
     restart)
         stop_all_workers
@@ -390,7 +492,8 @@ case "${1:-deploy}" in
         echo "  backup        - Start backup workers only"
         echo "  maintenance   - Start maintenance workers only"
         echo "  beat          - Start Celery Beat scheduler only"
-        echo "  stop          - Stop all workers and beat scheduler"
+        echo "  stop          - Stop all workers and beat scheduler (graceful)"
+        echo "  stop --force  - Force stop all services immediately"
         echo "  status        - Show workers status and statistics"
         echo "  logs          - Show recent logs"
         echo ""
@@ -398,7 +501,8 @@ case "${1:-deploy}" in
         echo "  $0            # Interactive deployment (default)"
         echo "  $0 deploy     # Interactive deployment"
         echo "  $0 start      # Start all workers"
-        echo "  $0 stop       # Stop everything"
+        echo "  $0 stop       # Stop everything gracefully"
+        echo "  $0 stop --force # Force stop immediately"
         echo "  $0 status     # Check status"
         echo "  $0 logs       # View logs"
         ;;

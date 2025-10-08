@@ -164,13 +164,13 @@ chmod +x scripts/quick_start.sh
 |--------|---------|-------------|--------------|
 | `setup.sh` | **Complete one-time setup** | **Once** during first setup | Virtual env, dependencies, config, **Telegram auth** |
 | `quick_start.sh` | **Smart restart sequence** | **After server reboot** or when starting fresh | Auto-detects auth needs, all-in-one startup |
-| `deploy_celery.sh` | Celery worker management | Start/stop/restart background services | Memory-optimized workers, PID management |
+| `deploy_celery.sh` | **Complete Celery management** | Start/stop/restart background services | Memory-optimized workers, graceful/force stop |
 | `run_app.sh` | Main application runner | Interactive monitoring/testing | Connection testing, graceful startup |
 | `telegram_auth.py` | Manual Telegram authentication | Re-authentication or troubleshooting | Interactive SMS verification |
 | `monitor_resources.sh` | System resource monitoring | Check performance and memory usage | Real-time stats, alerts |
 | `auto_restart.sh` | Automatic service recovery | Background watchdog service | Auto-restart failed services |
 | `status.sh` | Service status check | Quick health check | Process status, resource usage |
-| `stop_celery.sh` | Clean service shutdown | When stopping system | Graceful worker termination |
+
 | `verify_setup.sh` | System setup validation | Before first run, troubleshooting | Comprehensive system check |
 
 **Most Common Usage:**
@@ -305,7 +305,7 @@ telegram-ai-scraper/
 │   ├── deploy_celery.sh         # Celery worker management
 │   ├── run_app.sh               # Main application runner
 │   ├── monitor_resources.sh     # System resource monitoring
-│   ├── stop_celery.sh           # Alternative stop script
+
 │   ├── status.sh                # Service status check
 │   └── auto_restart.sh          # Automatic service recovery
 ├── docs/                          # Documentation
@@ -537,7 +537,7 @@ cd /home/ubuntu/TelegramScraper/telegram-ai-scraper
 python -c "import src.tasks.telegram_celery_tasks"  # Should not error
 
 # Clean restart
-./scripts/stop_celery.sh
+./scripts/deploy_celery.sh stop
 ./scripts/quick_start.sh
 ```
 

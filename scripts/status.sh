@@ -90,7 +90,7 @@ else
     echo "⚠ Some services are down"
     echo ""
     echo "To restart all services:"
-    echo "1. ./scripts/stop_celery.sh"
+    echo "1. ./scripts/deploy_celery.sh stop"
     echo "2. ./scripts/deploy_celery.sh"
 fi
 
@@ -98,7 +98,7 @@ echo ""
 echo "Useful Commands:"
 echo "───────────────"
 echo "Start all:     ./scripts/deploy_celery.sh"
-echo "Stop all:      ./scripts/stop_celery.sh"
+echo "Stop all:      ./scripts/deploy_celery.sh stop"
 echo "Monitor web:   http://localhost:5555 (if Flower is running)"
 echo "View logs:     tail -f logs/celery_*.log"
 echo "Test system:   python3 src/core/main.py --mode test"

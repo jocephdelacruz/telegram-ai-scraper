@@ -211,7 +211,7 @@ fi
 chmod +x src/core/main.py
 chmod +x scripts/setup.sh
 chmod +x scripts/deploy_celery.sh
-chmod +x scripts/stop_celery.sh
+
 chmod +x scripts/status.sh
 
 # Create systemd service files (optional)

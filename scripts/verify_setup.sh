@@ -128,7 +128,7 @@ echo ""
 echo "Checking Script Permissions..."
 echo "────────────────────────────"
 
-SCRIPT_FILES=("setup.sh" "quick_start.sh" "deploy_celery.sh" "run_app.sh" "monitor_resources.sh" "status.sh" "stop_celery.sh" "auto_restart.sh")
+SCRIPT_FILES=("setup.sh" "quick_start.sh" "deploy_celery.sh" "run_app.sh" "monitor_resources.sh" "status.sh" "auto_restart.sh" "telegram_auth.py" "verify_setup.sh")
 for script in "${SCRIPT_FILES[@]}"; do
     if [ -f "scripts/$script" ]; then
         if [ -x "scripts/$script" ]; then

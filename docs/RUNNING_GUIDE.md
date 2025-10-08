@@ -171,7 +171,7 @@ Starting Telegram AI Scraper Monitoring
 python3 scripts/telegram_auth.py
 
 # Stop all services
-./scripts/stop_celery.sh
+./scripts/deploy_celery.sh stop
 
 # View logs
 tail -f logs/main.log
@@ -242,11 +242,11 @@ tail -f logs/celery_main_processor.log
 ### Step 6: Stopping the System
 
 ```bash
-# Stop all workers and services
-./scripts/stop_celery.sh
-
-# Or use the management script
+# Stop all workers and services (graceful)
 ./scripts/deploy_celery.sh stop
+
+# Force stop immediately (if needed)
+./scripts/deploy_celery.sh stop --force
 ```
 
 ### Troubleshooting Quick Fixes
