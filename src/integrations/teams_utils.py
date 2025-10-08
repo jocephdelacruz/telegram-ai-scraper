@@ -14,18 +14,20 @@ LOGGER = lh.LogHandling(LOG_FILE, LOG_TZ)
 
 
 class TeamsNotifier:
-    def __init__(self, webhook_url, channel_name="Telegram Alerts"):
+    def __init__(self, webhook_url, channel_name="Telegram Alerts", system_name="Aldebaran Scraper"):
         """
         Initialize Teams notifier
         
         Args:
             webhook_url: Microsoft Teams webhook URL
             channel_name: Name of the channel for display purposes
+            system_name: Name of the system sending alerts (replaces "Unknown user")
         """
         try:
             self.webhook_url = webhook_url
             self.channel_name = channel_name
-            LOGGER.writeLog("TeamsNotifier initialized successfully")
+            self.system_name = system_name
+            LOGGER.writeLog(f"TeamsNotifier initialized successfully as '{system_name}'")
         except Exception as e:
             LOGGER.writeLog(f"TeamsNotifier initialization failed: {e}")
             raise
@@ -49,9 +51,10 @@ class TeamsNotifier:
                 "@context": "http://schema.org/extensions",
                 "themeColor": self._get_color_code(color),
                 "summary": title,
+                "originator": self.system_name,
                 "sections": [{
                     "activityTitle": title,
-                    "activitySubtitle": f"Channel: {self.channel_name}",
+                    "activitySubtitle": f"Source: {self.system_name} | Channel: {self.channel_name}",
                     "text": message,
                     "facts": facts or []
                 }]
@@ -194,12 +197,12 @@ class TeamsNotifier:
             }
             
             emoji = emoji_map.get(alert_type.upper(), "🔔")
-            title = f"{emoji} Telegram Scraper {alert_type.title()}"
+            title = f"{emoji} {self.system_name} {alert_type.title()}"
 
             # Prepare facts
             facts = [
                 {"name": "Timestamp", "value": datetime.now().strftime('%Y-%m-%d %H:%M:%S')},
-                {"name": "System", "value": "Telegram AI Scraper"}
+                {"name": "System", "value": self.system_name}
             ]
 
             if details:
@@ -291,8 +294,9 @@ class TeamsNotifier:
             test_message = {
                 "@type": "MessageCard",
                 "@context": "http://schema.org/extensions",
-                "summary": "Connection Test",
-                "text": "This is a test message from the Telegram AI Scraper system."
+                "summary": f"{self.system_name} - Connection Test",
+                "originator": self.system_name,
+                "text": f"This is a test message from {self.system_name}."
             }
 
             response = requests.post(

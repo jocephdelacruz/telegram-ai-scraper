@@ -134,7 +134,8 @@ def send_teams_notification(self, message_data, config, country_code):
         if not webhook_url:
             raise Exception(f"Teams webhook URL not configured for {country_code}")
             
-        teams_notifier = TeamsNotifier(webhook_url, channel_name)
+        teams_sender_name = config.get('TEAMS_SENDER_NAME', 'Aldebaran Scraper')
+        teams_notifier = TeamsNotifier(webhook_url, channel_name, teams_sender_name)
         success = teams_notifier.send_message_alert(message_data)
         
         if success:

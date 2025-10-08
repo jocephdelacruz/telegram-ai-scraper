@@ -1,4 +1,5 @@
 {
+   "TEAMS_SENDER_NAME": "Aldebaran Scraper",
    "OPEN_AI_KEY": "your_openai_api_key",
    
    "TELEGRAM_CONFIG": {

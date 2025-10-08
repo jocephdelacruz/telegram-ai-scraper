@@ -120,6 +120,7 @@ if [ ! -f "config/config_sample.json" ]; then
    "USERS": {
       "admin": "your_admin_password"
    },
+   "TEAMS_SENDER_NAME": "Aldebaran Scraper",
    "OPEN_AI_KEY": "your_openai_api_key_here",
    "TELEGRAM_CONFIG": {
       "API_ID": "your_telegram_api_id",

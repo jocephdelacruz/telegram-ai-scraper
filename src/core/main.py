@@ -171,23 +171,27 @@ class TelegramAIScraper:
             for country_code, country_info in countries.items():
                 if country_info.get('teams_webhook'):
                     # Use the first available Teams webhook for general notifications
+                    teams_sender_name = self.config.get('TEAMS_SENDER_NAME', 'Aldebaran Scraper')
                     self.teams_notifier = TeamsNotifier(
                         country_info['teams_webhook'],
-                        country_info.get('teams_channel_name', f'{country_code.title()} Telegram Alerts')
+                        country_info.get('teams_channel_name', f'{country_code.title()} Telegram Alerts'),
+                        teams_sender_name
                     )
                     teams_webhook_found = True
-                    print(f"Teams notifier initialized with {country_code} webhook")
-                    LOGGER.writeLog(f"Teams notifier initialized with {country_code} webhook")
+                    print(f"Teams notifier initialized with {country_code} webhook as '{teams_sender_name}'")
+                    LOGGER.writeLog(f"Teams notifier initialized with {country_code} webhook as '{teams_sender_name}'")
                     break
             
             if not teams_webhook_found:
                 if teams_config.get('WEBHOOK_URL'):
+                    teams_sender_name = self.config.get('TEAMS_SENDER_NAME', 'Aldebaran Scraper')
                     self.teams_notifier = TeamsNotifier(
                         teams_config['WEBHOOK_URL'],
-                        teams_config.get('CHANNEL_NAME', 'Telegram Alerts')
+                        teams_config.get('CHANNEL_NAME', 'Telegram Alerts'),
+                        teams_sender_name
                     )
-                    print("Teams notifier initialized with main config webhook")
-                    LOGGER.writeLog("Teams notifier initialized with main config webhook")
+                    print(f"Teams notifier initialized with main config webhook as '{teams_sender_name}'")
+                    LOGGER.writeLog(f"Teams notifier initialized with main config webhook as '{teams_sender_name}'")
                 else:
                     print("No Teams webhook configured, skipping Teams notifications")
                     LOGGER.writeLog("Teams webhook not configured, skipping Teams notifications")

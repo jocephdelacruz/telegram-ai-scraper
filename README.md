@@ -60,6 +60,7 @@ Edit `config.json` with your credentials and preferences:
 
 ### Required Settings
 
+- `TEAMS_SENDER_NAME`: System identifier shown in Teams notifications (e.g., "Aldebaran Scraper")
 - `OPEN_AI_KEY`: Your OpenAI API key
 - `TELEGRAM_CONFIG`: Telegram API credentials
 - `COUNTRIES`: Country-specific configurations with channels, Teams webhooks, and SharePoint settings
@@ -81,6 +82,7 @@ Edit `config.json` with your credentials and preferences:
 
 ```json
 {
+   "TEAMS_SENDER_NAME": "Aldebaran Scraper",
    "OPEN_AI_KEY": "your_openai_api_key",
    
    "TELEGRAM_CONFIG": {
