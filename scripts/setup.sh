@@ -6,7 +6,7 @@
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-VENV_PATH="../../telegram-ai-scraper_env"
+VENV_PATH="../telegram-ai-scraper_env"
 
 cd "$PROJECT_DIR"
 

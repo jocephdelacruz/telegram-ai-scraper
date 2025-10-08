@@ -14,11 +14,11 @@ task_routes = {
     'src.tasks.telegram_celery_tasks.health_check': {'queue': 'monitoring'}
 }
 
-# Worker configuration
-worker_concurrency = 4  # Number of concurrent tasks per worker
+# Worker configuration - Optimized for t3.small (2GB RAM)
+worker_concurrency = 1  # Reduced for memory efficiency
 worker_prefetch_multiplier = 1  # Only prefetch one task at a time
 task_acks_late = True  # Acknowledge task only after completion
-worker_max_tasks_per_child = 1000  # Restart worker after 1000 tasks (memory cleanup)
+worker_max_tasks_per_child = 100  # Restart worker after 100 tasks (more frequent memory cleanup)
 
 # Retry configuration
 task_reject_on_worker_lost = True
@@ -28,7 +28,7 @@ result_serializer = 'json'
 timezone = 'Asia/Manila'
 
 # Result backend settings
-result_expires = 3600  # Results expire after 1 hour
+result_expires = 1800  # Results expire after 30 minutes (save memory)
 
 # Task execution settings
 task_always_eager = False  # Set to True for testing (runs tasks synchronously)

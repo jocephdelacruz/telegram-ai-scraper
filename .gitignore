@@ -5,3 +5,4 @@ backups/
 logs/
 pids/
 *.sqlite3
+*.session

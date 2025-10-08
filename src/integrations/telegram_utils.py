@@ -9,7 +9,8 @@ from datetime import datetime
 import asyncio
 from src.core import log_handling as lh
 
-LOG_FILE = "../../logs/telegram.log"
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+LOG_FILE = os.path.join(PROJECT_ROOT, "logs", "telegram.log")
 LOG_TZ = "Asia/Manila"
 LOGGER = lh.LogHandling(LOG_FILE, LOG_TZ)
 

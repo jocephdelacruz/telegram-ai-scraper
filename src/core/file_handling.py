@@ -3,7 +3,8 @@ import json
 import csv
 from datetime import datetime
 
-LOG_FILE = "./logs/file_handling.log"
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+LOG_FILE = os.path.join(PROJECT_ROOT, "logs", "file_handling.log")
 LOG_TZ = "Asia/Manila"
 
 # Initialize logger with lazy loading to avoid circular imports

@@ -13,10 +13,23 @@ NC='\033[0m' # No Color
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-VENV_DIR="$PROJECT_DIR/../../telegram-ai-scraper_env"
+VENV_DIR="$PROJECT_DIR/../telegram-ai-scraper_env"
 LOG_DIR="$PROJECT_DIR/logs"
 PID_DIR="$PROJECT_DIR/pids"
 DATA_DIR="$PROJECT_DIR/data"
+
+# Worker Configuration - Adjust these values as needed
+WORKER_MODE="consolidated"   # values: consolidated | split | original
+MAIN_PROCESSOR_WORKERS=1
+NOTIFICATIONS_WORKERS=1
+SHAREPOINT_WORKERS=1
+BACKUP_WORKERS=1
+MAINTENANCE_WORKERS=1
+DEFAULT_LOG_LEVEL=info
+MAX_TASKS_PER_CHILD=100
+PREFETCH_MULTIPLIER=1
+POOL="prefork"   # or "solo" if CPU bound + low throughput
+FLOWER_PORT=5555
 
 # Function to print colored output
 print_status() {
@@ -87,67 +100,59 @@ check_prerequisites() {
     print_success "All prerequisites met"
 }
 
+
 # Function to start a worker
 start_worker() {
     local worker_name=$1
-    local queue=$2
-    local concurrency=${3:-2}
-    local log_level=${4:-info}
+    local queues=$2
+    local concurrency=${3:-1}
+    local log_level=${4:-$DEFAULT_LOG_LEVEL}
+    local pidfile="$PID_DIR/celery_${worker_name}.pid"
+    local logfile="$LOG_DIR/celery_${worker_name}.log"
+
+    print_status "Starting $worker_name (queues: $queues, concurrency: $concurrency)..."
+    nohup "$VENV_DIR/bin/celery" -A src.tasks.telegram_celery_tasks.celery worker \
+        -n "${worker_name}@%h" \
+        -Q "$queues" \
+        --concurrency "$concurrency" \
+        --loglevel "$log_level" \
+        --pidfile "$pidfile" \
+        --logfile "$logfile" \
+        --max-tasks-per-child "$MAX_TASKS_PER_CHILD" \
+        --prefetch-multiplier "$PREFETCH_MULTIPLIER" \
+        --pool "$POOL" \
+        --heartbeat-interval 10 \
+        --without-gossip \
+        --without-mingle \
+        > "$LOG_DIR/${worker_name}_startup.log" 2>&1 &
     
-    print_status "Starting $worker_name worker (queue: $queue, concurrency: $concurrency)..."
-    
-    nohup celery -A src.tasks.telegram_celery_tasks.celery worker \
-        --loglevel=$log_level \
-        --queues=$queue \
-        --concurrency=$concurrency \
-        --hostname=$worker_name@%h \
-        --logfile="$LOG_DIR/celery_${worker_name}.log" \
-        --pidfile="$PID_DIR/celery_${worker_name}.pid" \
-        > "$LOG_DIR/celery_${worker_name}_startup.log" 2>&1 &
-    
-    # Wait a moment for startup
     sleep 2
-    
-    # Check if worker started successfully
-    if [ -f "$PID_DIR/celery_${worker_name}.pid" ]; then
-        local pid=$(cat "$PID_DIR/celery_${worker_name}.pid")
-        if kill -0 "$pid" 2>/dev/null; then
-            print_success "$worker_name worker started successfully (PID: $pid)"
-        else
-            print_error "$worker_name worker failed to start"
-            return 1
-        fi
+    if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+        print_success "$worker_name started (PID: $(cat "$pidfile"))"
     else
-        print_error "$worker_name worker PID file not found"
+        print_error "Failed to start $worker_name. See $LOG_DIR/${worker_name}_startup.log"
         return 1
     fi
 }
 
+
 # Function to start Celery Beat (scheduler)
 start_beat() {
-    print_status "Starting Celery Beat scheduler..."
-    
-    nohup celery -A src.tasks.telegram_celery_tasks.celery beat \
-        --loglevel=info \
-        --logfile="$LOG_DIR/celery_beat.log" \
-        --pidfile="$PID_DIR/celery_beat.pid" \
+    print_status "Starting Beat..."
+    nohup "$VENV_DIR/bin/celery" -A src.tasks.telegram_celery_tasks.celery beat \
+        --loglevel info \
+        --pidfile "$PID_DIR/celery_beat.pid" \
+        --logfile "$LOG_DIR/celery_beat.log" \
         > "$LOG_DIR/celery_beat_startup.log" 2>&1 &
-    
     sleep 2
-    
-    if [ -f "$PID_DIR/celery_beat.pid" ]; then
-        local pid=$(cat "$PID_DIR/celery_beat.pid")
-        if kill -0 "$pid" 2>/dev/null; then
-            print_success "Celery Beat started successfully (PID: $pid)"
-        else
-            print_error "Celery Beat failed to start"
-            return 1
-        fi
+    if [ -f "$PID_DIR/celery_beat.pid" ] && kill -0 "$(cat "$PID_DIR/celery_beat.pid")" 2>/dev/null; then
+        print_success "Beat started (PID: $(cat "$PID_DIR/celery_beat.pid"))"
     else
-        print_error "Celery Beat PID file not found"
+        print_error "Beat failed. See celery_beat_startup.log"
         return 1
     fi
 }
+
 
 # Function to check if workers are running
 check_workers() {
@@ -162,72 +167,52 @@ check_workers() {
     fi
 }
 
+
+start_flower() {
+    print_status "Starting Flower (port $FLOWER_PORT)..."
+    nohup "$VENV_DIR/bin/celery" -A src.tasks.telegram_celery_tasks.celery flower \
+        --port="$FLOWER_PORT" \
+        --url_prefix=/ \
+        --logging=info \
+        --persistent \
+        > "$LOG_DIR/flower.log" 2>&1 &
+    echo $! > "$PID_DIR/flower.pid"
+    sleep 2
+    if kill -0 "$(cat "$PID_DIR/flower.pid")" 2>/dev/null; then
+        print_success "Flower started (PID: $(cat "$PID_DIR/flower.pid"))"
+    else
+        print_warning "Flower may not have started. Check flower.log"
+    fi
+}
+
+
 # Function to stop all workers
 stop_all_workers() {
-    print_status "Stopping all Celery workers..."
-    
-    # Stop all worker processes
-    for pidfile in "$PID_DIR"/celery_*.pid; do
-        if [ -f "$pidfile" ]; then
-            local pid=$(cat "$pidfile")
-            local worker_name=$(basename "$pidfile" .pid)
-            
-            if kill -0 "$pid" 2>/dev/null; then
-                print_status "Stopping $worker_name (PID: $pid)..."
-                kill -TERM "$pid"
-                
-                # Wait for graceful shutdown
-                local count=0
-                while kill -0 "$pid" 2>/dev/null && [ $count -lt 10 ]; do
-                    sleep 1
-                    count=$((count + 1))
-                done
-                
-                # Force kill if still running
-                if kill -0 "$pid" 2>/dev/null; then
-                    print_warning "Force killing $worker_name..."
-                    kill -KILL "$pid"
-                fi
-                
-                print_success "$worker_name stopped"
-            else
-                print_warning "$worker_name was not running"
-            fi
-            
-            rm -f "$pidfile"
+    print_status "Stopping workers + beat + flower..."
+    for pidfile in "$PID_DIR"/celery_*.pid "$PID_DIR/flower.pid"; do
+        [ -f "$pidfile" ] || continue
+        pid=$(cat "$pidfile")
+        name=$(basename "$pidfile" .pid)
+        if kill -0 "$pid" 2>/dev/null; then
+            print_status "Stopping $name (PID $pid)"
+            kill "$pid"
+            sleep 2
+            kill -0 "$pid" 2>/dev/null && kill -9 "$pid"
         fi
+        rm -f "$pidfile"
     done
-    
-    print_success "All workers stopped"
+    print_success "All stopped"
 }
+
 
 # Function to show status
 show_status() {
-    print_status "Checking Celery workers status..."
-    
-    echo -e "\n${YELLOW}Active Workers:${NC}"
-    celery -A src.tasks.telegram_celery_tasks.celery inspect active 2>/dev/null || print_error "Cannot connect to Celery"
-    
-    echo -e "\n${YELLOW}Registered Tasks:${NC}"
-    celery -A src.tasks.telegram_celery_tasks.celery inspect registered 2>/dev/null || print_error "Cannot connect to Celery"
-    
-    echo -e "\n${YELLOW}Worker Statistics:${NC}"
-    celery -A src.tasks.telegram_celery_tasks.celery inspect stats 2>/dev/null || print_error "Cannot connect to Celery"
-    
-    echo -e "\n${YELLOW}PID Files:${NC}"
-    for pidfile in "$PID_DIR"/celery_*.pid; do
-        if [ -f "$pidfile" ]; then
-            local pid=$(cat "$pidfile")
-            local worker_name=$(basename "$pidfile" .pid)
-            
-            if kill -0 "$pid" 2>/dev/null; then
-                echo -e "  ${GREEN}●${NC} $worker_name (PID: $pid) - Running"
-            else
-                echo -e "  ${RED}●${NC} $worker_name (PID: $pid) - Not running"
-            fi
-        fi
-    done
+    print_status "Celery status:"
+    "$VENV_DIR/bin/celery" -A src.tasks.telegram_celery_tasks.celery inspect ping 2>/dev/null
+    echo "Running PIDs:"
+    ls "$PID_DIR"/*.pid 2>/dev/null || true
 }
+
 
 # Function to show logs
 show_logs() {
@@ -242,16 +227,28 @@ show_logs() {
     tail -n 10 "$LOG_DIR/celery_sharepoint.log" 2>/dev/null || print_warning "No SharePoint logs found"
 }
 
+
 # Function to start all workers
 start_all_workers() {
-    print_status "Starting all Celery workers..."
-    start_worker "main_processor" "telegram_processing" 4
-    start_worker "notifications" "notifications" 2
-    start_worker "sharepoint" "sharepoint" 2
-    start_worker "backup" "backup" 1
-    start_worker "maintenance" "maintenance,monitoring" 1
-    start_beat
-    print_success "All workers started successfully!"
+    case "$WORKER_MODE" in
+        consolidated)
+            # Single worker handles all queues
+            start_worker "all" "telegram_processing,notifications,sharepoint,backup,maintenance" 2 || return 1
+            ;;
+        split)
+            start_worker "main_processor" "telegram_processing,sharepoint" $MAIN_PROCESSOR_WORKERS || return 1
+            start_worker "aux" "notifications,backup,maintenance" 1 || return 1
+            ;;
+        original)
+            start_worker "main_processor" "telegram_processing" $MAIN_PROCESSOR_WORKERS || return 1
+            start_worker "notifications" "notifications" $NOTIFICATIONS_WORKERS || return 1
+            start_worker "sharepoint" "sharepoint" $SHAREPOINT_WORKERS || return 1
+            start_worker "backup" "backup" $BACKUP_WORKERS || return 1
+            start_worker "maintenance" "maintenance,monitoring" $MAINTENANCE_WORKERS || return 1
+            ;;
+    esac
+    start_beat || return 1
+    start_flower
 }
 
 # Main command handler
@@ -259,7 +256,8 @@ case "${1:-deploy}" in
     "start"|"all"|"deploy")
         check_prerequisites
         start_all_workers
-        
+        show_status
+
         # Wait for workers to initialize
         print_status "Waiting for workers to initialize..."
         sleep 10
@@ -268,16 +266,7 @@ case "${1:-deploy}" in
         if check_workers; then
             print_success "All workers started successfully!"
             
-            # Option to start Flower monitoring (optional)
-            echo ""
-            read -p "Start Flower monitoring web UI? (y/n): " -n 1 -r
-            echo ""
-            if [[ $REPLY =~ ^[Yy]$ ]]; then
-                print_status "Starting Flower monitoring..."
-                nohup celery -A src.tasks.telegram_celery_tasks.celery flower --port=5555 > "$LOG_DIR/flower.log" 2>&1 &
-                echo $! > "$PID_DIR/flower.pid"
-                print_success "Flower started at http://localhost:5555"
-            fi
+            # Flower is already started in start_all_workers function
 
             # Option to run tests
             echo ""
@@ -310,11 +299,23 @@ case "${1:-deploy}" in
                 echo "=========================================="
                 echo ""
                 print_success "Services running:"
-                echo "- Telegram Processing Workers: 4 workers"
-                echo "- Notification Workers: 2 workers"
-                echo "- SharePoint Workers: 2 workers"
-                echo "- Backup Workers: 1 worker"
-                echo "- Maintenance Workers: 1 worker"
+                case "$WORKER_MODE" in
+                    consolidated)
+                        echo "- Consolidated Worker: 1 worker (2 concurrency)"
+                        echo "  Queues: telegram_processing,notifications,sharepoint,backup,maintenance"
+                        ;;
+                    split)
+                        echo "- Main Processor: $MAIN_PROCESSOR_WORKERS workers"
+                        echo "- Auxiliary Worker: 1 worker"
+                        ;;
+                    original)
+                        echo "- Telegram Processing Workers: $MAIN_PROCESSOR_WORKERS workers"
+                        echo "- Notification Workers: $NOTIFICATIONS_WORKERS workers"
+                        echo "- SharePoint Workers: $SHAREPOINT_WORKERS workers"
+                        echo "- Backup Workers: $BACKUP_WORKERS worker"
+                        echo "- Maintenance Workers: $MAINTENANCE_WORKERS worker"
+                        ;;
+                esac
                 echo "- Celery Beat Scheduler: 1 process"
                 if [ -f "$PID_DIR/flower.pid" ]; then
                     echo "- Flower Monitoring: http://localhost:5555"
@@ -337,11 +338,15 @@ case "${1:-deploy}" in
         fi
         ;;
     "stop")
-        check_prerequisites
         stop_all_workers
         ;;
-    "status")
+    restart)
+        stop_all_workers
+        sleep 2
         check_prerequisites
+        start_all_workers
+        ;;
+    "status")
         show_status
         ;;
     "logs")
@@ -349,23 +354,23 @@ case "${1:-deploy}" in
         ;;
     "main")
         check_prerequisites
-        start_worker "main_processor" "telegram_processing" 4
+        start_worker "main_processor" "telegram_processing" $MAIN_PROCESSOR_WORKERS
         ;;
     "notifications")
         check_prerequisites
-        start_worker "notifications" "notifications" 2
+        start_worker "notifications" "notifications" $NOTIFICATIONS_WORKERS
         ;;
     "sharepoint")
         check_prerequisites
-        start_worker "sharepoint" "sharepoint" 2
+        start_worker "sharepoint" "sharepoint" $SHAREPOINT_WORKERS
         ;;
     "backup")
         check_prerequisites
-        start_worker "backup" "backup" 1
+        start_worker "backup" "backup" $BACKUP_WORKERS
         ;;
     "maintenance")
         check_prerequisites
-        start_worker "maintenance" "maintenance,monitoring" 1
+        start_worker "maintenance" "maintenance,monitoring" $MAINTENANCE_WORKERS
         ;;
     "beat")
         check_prerequisites

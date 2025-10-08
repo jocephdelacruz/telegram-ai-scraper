@@ -9,7 +9,8 @@ from msal import ConfidentialClientApplication
 
 import string                    # Used in getTableRangeFromListOfDict 
 
-LOG_FILE = "../../logs/sharepoint.log"
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+LOG_FILE = os.path.join(PROJECT_ROOT, "logs", "sharepoint.log")
 LOG_TZ = "Asia/Manila"
 LOGGER = lh.LogHandling(LOG_FILE, LOG_TZ)
 
