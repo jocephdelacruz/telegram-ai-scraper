@@ -100,6 +100,18 @@ else
     echo "✗ Redis connection failed - please check Redis installation"
 fi
 
+# Check if config.json exists and Telegram is configured
+CONFIG_EXISTS=false
+TELEGRAM_CONFIGURED=false
+
+if [ -f "config/config.json" ]; then
+    CONFIG_EXISTS=true
+    # Check if Telegram config exists
+    if grep -q '"TELEGRAM_CONFIG"' config/config.json && grep -q '"API_ID"' config/config.json; then
+        TELEGRAM_CONFIGURED=true
+    fi
+fi
+
 # Create sample configuration if it doesn't exist
 if [ ! -f "config/config_sample.json" ]; then
     echo "Creating sample configuration file..."
@@ -232,12 +244,80 @@ echo "=========================================="
 echo "Setup completed successfully!"
 echo "=========================================="
 echo ""
-echo "CELERY + REDIS ARCHITECTURE SETUP"
+
+# Prompt for configuration if needed
+if [ "$CONFIG_EXISTS" = false ]; then
+    echo "⚠️  Configuration Required:"
+    echo "1. Copy config/config_sample.json to config/config.json"
+    echo "2. Edit config/config.json with your actual API keys and settings"
+    echo ""
+    read -p "Have you configured config/config.json with your API keys? (y/n): " configured
+    
+    if [ "$configured" = "y" ] || [ "$configured" = "Y" ]; then
+        CONFIG_EXISTS=true
+        if grep -q '"TELEGRAM_CONFIG"' config/config.json && grep -q '"API_ID"' config/config.json; then
+            TELEGRAM_CONFIGURED=true
+        fi
+    else
+        echo ""
+        echo "Please complete configuration first:"
+        echo "1. cp config/config_sample.json config/config.json" 
+        echo "2. Edit config/config.json with your API keys"
+        echo "3. Run this setup script again or proceed to telegram authentication"
+        CONFIG_EXISTS=false
+    fi
+fi
+
+# Run Telegram authentication if configured
+if [ "$CONFIG_EXISTS" = true ] && [ "$TELEGRAM_CONFIGURED" = true ]; then
+    echo ""
+    echo "🔐 TELEGRAM AUTHENTICATION SETUP"
+    echo "================================="
+    
+    # Check if session file already exists
+    if [ -f "telegram_session.session" ]; then
+        echo "✅ Telegram session file already exists"
+        echo "If you need to re-authenticate, delete telegram_session.session and run:"
+        echo "python3 scripts/telegram_auth.py"
+    else
+        echo "📱 Telegram authentication required for first-time setup"
+        echo "This will prompt you to enter SMS verification code from your phone"
+        echo ""
+        read -p "Run Telegram authentication now? (y/n): " auth_now
+        
+        if [ "$auth_now" = "y" ] || [ "$auth_now" = "Y" ]; then
+            echo ""
+            echo "Starting Telegram authentication..."
+            python3 scripts/telegram_auth.py
+            
+            if [ $? -eq 0 ]; then
+                echo "✅ Telegram authentication completed successfully!"
+            else
+                echo "❌ Telegram authentication failed"
+                echo "You can retry later with: python3 scripts/telegram_auth.py"
+            fi
+        else
+            echo ""
+            echo "⚠️  Telegram authentication skipped"
+            echo "Run this command when ready: python3 scripts/telegram_auth.py"
+        fi
+    fi
+fi
+
 echo ""
-echo "Quick Start (Recommended):"
-echo "1. Copy config/config_sample.json to config/config.json"
-echo "2. Edit config/config.json with your actual API keys and settings"
-echo "3. Run './scripts/deploy_celery.sh' to start all services"
+echo "NEXT STEPS:"
+echo "==========="
+if [ "$CONFIG_EXISTS" = false ]; then
+    echo "1. Configure your API keys: cp config/config_sample.json config/config.json"
+    echo "2. Edit config/config.json with actual values"
+    echo "3. Run Telegram authentication: python3 scripts/telegram_auth.py"
+    echo "4. Start the system: ./scripts/quick_start.sh"
+elif [ ! -f "telegram_session.session" ]; then
+    echo "1. Run Telegram authentication: python3 scripts/telegram_auth.py"
+    echo "2. Start the system: ./scripts/quick_start.sh"
+else
+    echo "✅ System ready! Start with: ./scripts/quick_start.sh"
+fi
 echo ""
 echo "Manual Deployment:"
 echo "1. Start Celery workers in separate terminals:"

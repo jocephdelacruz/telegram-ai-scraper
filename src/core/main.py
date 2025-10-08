@@ -95,8 +95,9 @@ class TelegramAIScraper:
         # Default fallback if channel not found in any country
         return None, None
 
-    async def initialize_components(self):
+    async def initialize_components(self, test_mode=False):
         """Initialize all components (Telegram, OpenAI, Teams, SharePoint)"""
+        self._test_mode = test_mode  # Store test mode flag
         try:
             print("Initializing OpenAI processor...")
             # Initialize OpenAI processor
@@ -143,12 +144,20 @@ class TelegramAIScraper:
             # Start Telegram client
             success = await self.telegram_scraper.start_client()
             if not success:
-                print("Warning: Failed to start Telegram client (may need authentication)")
-                LOGGER.writeLog("Warning: Failed to start Telegram client (may need authentication)")
-                # Don't raise exception in test mode - just warn
-                self.telegram_scraper = None
+                print("❌ Failed to start Telegram client")
+                print("🔧 This usually means authentication is needed")
+                print("🚀 Run: python3 scripts/telegram_auth.py")
+                LOGGER.writeLog("Failed to start Telegram client - authentication likely needed")
+                
+                # In test mode, we can continue without Telegram to test other components
+                if hasattr(self, '_test_mode') and self._test_mode:
+                    print("⚠️  Continuing in test mode without Telegram")
+                    self.telegram_scraper = None
+                else:
+                    # In monitor/historical mode, Telegram is required
+                    raise Exception("Telegram client authentication required. Run: python3 scripts/telegram_auth.py")
             else:
-                print("Telegram client started successfully")
+                print("✅ Telegram client started successfully")
                 LOGGER.writeLog("Telegram scraper initialized")
 
             print("Initializing Teams notifier...")
@@ -482,7 +491,7 @@ async def main():
         # Initialize components
         print("Initializing components...")
         LOGGER.writeLog("Initializing Telegram AI Scraper...")
-        success = await scraper.initialize_components()
+        success = await scraper.initialize_components(test_mode=(args.mode == 'test'))
         
         if not success:
             print("Failed to initialize components")

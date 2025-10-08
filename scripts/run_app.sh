@@ -56,7 +56,20 @@ CONFIG="${2:-config.json}"
 case "$MODE" in
     test)
         print_status "Running connection tests..."
-        python3 src/core/main.py --mode test --config "$CONFIG"
+        result=$(python3 src/core/main.py --mode test --config "$CONFIG" 2>&1)
+        exit_code=$?
+        echo "$result"
+        
+        # Check if Telegram authentication is needed
+        if echo "$result" | grep -q "Run: python3 scripts/telegram_auth.py"; then
+            echo ""
+            echo -e "${YELLOW}🔧 Telegram authentication required!${NC}"
+            echo -e "${YELLOW}Run the following command to authenticate:${NC}"
+            echo -e "${GREEN}python3 scripts/telegram_auth.py${NC}"
+            echo ""
+        fi
+        
+        exit $exit_code
         ;;
     monitor)
         print_status "Starting real-time monitoring..."

@@ -63,11 +63,57 @@ else
     exit 1
 fi
 
-# Step 2: Check system resources
-print_status "2. Checking system resources..."
-echo ""
-./scripts/monitor_resources.sh memory
-echo ""
+# Step 2: Check virtual environment
+print_status "2. Checking virtual environment..."
+VENV_DIR="../telegram-ai-scraper_env"
+if [ ! -d "$VENV_DIR" ]; then
+    print_error "Virtual environment not found at $VENV_DIR"
+    print_error "Please run ./scripts/setup.sh first"
+    exit 1
+fi
+
+# Activate virtual environment
+print_status "Activating virtual environment..."
+source "$VENV_DIR/bin/activate"
+print_success "Virtual environment activated"
+
+# Step 2.5: Check Telegram authentication
+print_status "2.5 Checking Telegram authentication..."
+if [ ! -f "telegram_session.session" ]; then
+    print_warning "Telegram session file not found"
+    
+    # Check if config exists and has Telegram config
+    if [ -f "config/config.json" ] && grep -q '"TELEGRAM_CONFIG"' config/config.json; then
+        print_status "🔐 Telegram authentication required"
+        echo ""
+        echo "The system needs to authenticate with Telegram for the first time."
+        echo "This requires entering an SMS verification code sent to your phone."
+        echo ""
+        read -p "Run Telegram authentication now? (y/n): " auth_now
+        
+        if [ "$auth_now" = "y" ] || [ "$auth_now" = "Y" ]; then
+            print_status "Starting Telegram authentication..."
+            python3 scripts/telegram_auth.py
+            
+            if [ $? -eq 0 ]; then
+                print_success "Telegram authentication completed!"
+            else
+                print_error "Telegram authentication failed"
+                print_error "Please run manually: python3 scripts/telegram_auth.py"
+                exit 1
+            fi
+        else
+            print_warning "Telegram authentication skipped"
+            print_warning "Some features may not work without authentication"
+            print_warning "Run later with: python3 scripts/telegram_auth.py"
+        fi
+    else
+        print_warning "config/config.json missing or incomplete"
+        print_warning "Please run ./scripts/setup.sh first"
+    fi
+else
+    print_success "Telegram session file found"
+fi
 
 # Step 3: Check configuration
 print_status "3. Verifying configuration..."

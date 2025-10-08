@@ -6,16 +6,23 @@
 1. **System Requirements**:
    - Ubuntu/Linux system
    - Python 3.8+
-   - Redis server
    - Internet connection for API calls
+   - Phone access for Telegram SMS verification
 
-### Step 1: Initial Setup (One-time only)
+### New Streamlined Workflow
+
+The setup process has been streamlined into two main commands:
+
+1. **`./scripts/setup.sh`** - Complete one-time setup (includes Telegram auth)
+2. **`./scripts/quick_start.sh`** - Start system (auto-detects auth needs)
+
+### Step 1: Complete Setup (One-time only)
 
 ```bash
 # Navigate to project directory
 cd /home/ubuntu/TelegramScraper/telegram-ai-scraper
 
-# Run setup script (installs dependencies, creates virtual env, starts redis)
+# Run comprehensive setup script
 chmod +x scripts/setup.sh
 ./scripts/setup.sh
 ```
@@ -26,16 +33,17 @@ This script will:
 - ✅ Install and start Redis server
 - ✅ Create necessary directories (`logs/`, `data/`, etc.)
 - ✅ Set file permissions
+- ✅ **Guide you through configuration setup**
+- ✅ **Automatically run Telegram authentication** (SMS verification)
 
-### Step 2: Configuration
+**Interactive Setup Process:**
+1. **Dependencies Installation** - Automatic
+2. **Configuration Prompt** - You'll be asked to configure API keys
+3. **Telegram Authentication** - SMS code verification (if config is ready)
 
-```bash
-# Copy sample configuration
-cp config/config_sample.json config/config.json
+### Step 1.5: Configuration (Guided Setup)
 
-# Edit with your actual credentials
-nano config/config.json  # or use your preferred editor
-```
+The setup script will guide you through configuration:
 
 **Required Configuration Updates**:
 ```json
@@ -65,32 +73,51 @@ nano config/config.json  # or use your preferred editor
 }
 ```
 
-### Step 3: Start the System (Easy Mode)
+### Step 2: Start the System (Quick Start)
 
 ```bash
-# Start everything with interactive deployment script
-chmod +x scripts/deploy_celery.sh
-./scripts/deploy_celery.sh
+# Start everything with one command
+chmod +x scripts/quick_start.sh
+./scripts/quick_start.sh
 ```
 
 **What this script does**:
-1. ✅ Checks all prerequisites (Python, Redis, config file)
+1. ✅ Checks and starts Redis service
 2. ✅ Activates virtual environment
-3. ✅ Starts all Celery workers:
-   - Main processing workers (4 workers)
-   - Notification workers (2 workers) 
-   - SharePoint workers (2 workers)
-   - Backup workers (1 worker)
-   - Maintenance workers (1 worker)
-4. ✅ Starts Celery Beat scheduler
-5. ✅ Offers to start Flower monitoring web UI
-6. ✅ Offers to run connection tests
-7. ✅ **Offers to start monitoring mode** ← This is what you want!
+3. ✅ **Auto-detects if Telegram authentication needed** (prompts if required)
+4. ✅ Starts optimized Celery workers:
+   - Main processing workers (memory-optimized)
+   - Notification workers
+   - SharePoint workers  
+   - Backup workers
+5. ✅ Starts Flower monitoring web UI at http://localhost:5555
+6. ✅ Provides system status and next steps
 
-**Interactive Options**:
-- When prompted "Start Flower monitoring web UI? (y/n)": Type `y` to enable web monitoring at http://localhost:5555
-- When prompted "Run connection tests? (y/n)": Type `y` to test all API connections
-- When prompted "Start real-time monitoring? (y/n)": Type `y` to begin monitoring Telegram channels
+**Expected Flow**:
+- **First run after setup**: Should start immediately (auth already done)
+- **After server restart**: Auto-detects everything and starts
+- **If auth missing**: Prompts for Telegram SMS verification
+
+### Step 2.5: System Verification (Optional)
+
+```bash
+# Test all connections and components
+./scripts/run_app.sh test
+```
+
+This will test:
+- ✅ Telegram API connection
+- ✅ OpenAI API connection  
+- ✅ Teams webhook connectivity
+- ✅ SharePoint access
+- ✅ Redis connectivity
+
+### Step 3: Start Monitoring
+
+```bash
+# Start real-time monitoring
+./scripts/run_app.sh monitor
+```
 
 ### Step 4: Monitor the System
 
@@ -110,7 +137,48 @@ Starting Telegram AI Scraper Monitoring
 [2025-10-02 10:30:22] Listening for new messages... (Press Ctrl+C to stop)
 ```
 
-### Alternative: Manual Step-by-Step Control
+## Quick Reference
+
+### Most Common Commands
+
+```bash
+# First-time setup (includes Telegram auth)
+./scripts/setup.sh
+
+# Start after server restart
+./scripts/quick_start.sh
+
+# Check system status
+./scripts/status.sh
+
+# Start monitoring
+./scripts/run_app.sh monitor
+
+# Test connections
+./scripts/run_app.sh test
+
+# Monitor resources
+./scripts/monitor_resources.sh
+```
+
+### Troubleshooting Commands
+
+```bash
+# Verify setup
+./scripts/verify_setup.sh
+
+# Manual Telegram authentication (if needed)
+python3 scripts/telegram_auth.py
+
+# Stop all services
+./scripts/stop_celery.sh
+
+# View logs
+tail -f logs/main.log
+tail -f logs/celery_main_processor.log
+```
+
+## Alternative: Manual Step-by-Step Control
 
 If you prefer manual control over each component:
 

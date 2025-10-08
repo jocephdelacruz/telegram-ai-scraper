@@ -129,32 +129,44 @@ For detailed configuration examples and migration guides, see the [Complete Enha
 
 #### First-Time Setup
 ```bash
-# 1. Run initial setup
+# 1. Run complete setup (includes dependencies, config, and Telegram auth)
 chmod +x scripts/setup.sh
 ./scripts/setup.sh
 
-# 2. Configure your settings
-cp config/config_sample.json config/config.json
-# Edit config/config.json with your actual API keys and settings
-
-# 3. Start everything with one command
+# 2. Start everything with one command
 chmod +x scripts/quick_start.sh
 ./scripts/quick_start.sh
 ```
 
+**What setup.sh does:**
+- ✅ Creates virtual environment and installs dependencies
+- ✅ Starts Redis server
+- ✅ Prompts for configuration (API keys, webhooks, etc.)
+- ✅ **Automatically runs Telegram authentication** (SMS verification)
+- ✅ Creates all required directories and files
+
 #### After Server Restart
 ```bash
-# Single command to restart everything
+# Single command to restart everything (auto-detects if Telegram auth needed)
 ./scripts/quick_start.sh
 ```
+
+**What quick_start.sh does:**
+- ✅ Starts Redis service
+- ✅ Activates virtual environment
+- ✅ **Auto-detects if Telegram authentication needed** (prompts if required)
+- ✅ Starts all Celery workers with optimal settings
+- ✅ Starts monitoring web UI (Flower)
+- ✅ Provides status and next steps
 
 #### Available Scripts
 | Script | Purpose | When to Use | Key Features |
 |--------|---------|-------------|--------------|
-| `setup.sh` | Initial installation & environment setup | **Once** during first setup | Virtual env, dependencies, swap file |
-| `quick_start.sh` | **Complete restart sequence** | **After server reboot** or when starting fresh | All-in-one startup with validation |
+| `setup.sh` | **Complete one-time setup** | **Once** during first setup | Virtual env, dependencies, config, **Telegram auth** |
+| `quick_start.sh` | **Smart restart sequence** | **After server reboot** or when starting fresh | Auto-detects auth needs, all-in-one startup |
 | `deploy_celery.sh` | Celery worker management | Start/stop/restart background services | Memory-optimized workers, PID management |
 | `run_app.sh` | Main application runner | Interactive monitoring/testing | Connection testing, graceful startup |
+| `telegram_auth.py` | Manual Telegram authentication | Re-authentication or troubleshooting | Interactive SMS verification |
 | `monitor_resources.sh` | System resource monitoring | Check performance and memory usage | Real-time stats, alerts |
 | `auto_restart.sh` | Automatic service recovery | Background watchdog service | Auto-restart failed services |
 | `status.sh` | Service status check | Quick health check | Process status, resource usage |
@@ -163,8 +175,8 @@ chmod +x scripts/quick_start.sh
 
 **Most Common Usage:**
 - **Verify setup:** `./scripts/verify_setup.sh` (recommended first step)
-- **First time:** `./scripts/setup.sh` then `./scripts/quick_start.sh`
-- **After restart:** `./scripts/quick_start.sh`
+- **First time:** `./scripts/setup.sh` (includes config + Telegram auth)
+- **After restart:** `./scripts/quick_start.sh` (auto-detects auth if needed)
 - **Check status:** `./scripts/status.sh`
 
 ### Manual Deployment
@@ -530,14 +542,17 @@ python -c "import src.tasks.telegram_celery_tasks"  # Should not error
 ```
 
 #### 4. Telegram Authentication Issues
-**Symptoms:** "Authentication failed", "Session expired"
+**Symptoms:** "Telegram client not initialized", "Authentication failed", "Session expired"
 **Solutions:**
 ```bash
-# Interactive authentication setup (one-time)
-python src/core/main.py --config config/config.json --mode test
+# Use the dedicated authentication script (recommended)
+python3 scripts/telegram_auth.py
 
-# Follow prompts to enter phone number and verification code
-# This creates telegram-ai-scraper_env/session.session file
+# Follow prompts to enter SMS verification code
+# This creates telegram_session.session file
+
+# Alternative: Test connections to trigger authentication
+./scripts/run_app.sh test
 ```
 
 #### 5. OpenAI API Errors
