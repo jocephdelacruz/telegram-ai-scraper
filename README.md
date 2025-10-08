@@ -125,9 +125,11 @@ For detailed configuration examples and migration guides, see the [Complete Enha
 
 ## Usage
 
-### Quick Start (Recommended)
+### 🚀 Quick Start (Recommended)
+
+#### First-Time Setup
 ```bash
-# 1. First-time setup
+# 1. Run initial setup
 chmod +x scripts/setup.sh
 ./scripts/setup.sh
 
@@ -136,9 +138,34 @@ cp config/config_sample.json config/config.json
 # Edit config/config.json with your actual API keys and settings
 
 # 3. Start everything with one command
-chmod +x scripts/deploy_celery.sh
-./scripts/deploy_celery.sh
+chmod +x scripts/quick_start.sh
+./scripts/quick_start.sh
 ```
+
+#### After Server Restart
+```bash
+# Single command to restart everything
+./scripts/quick_start.sh
+```
+
+#### Available Scripts
+| Script | Purpose | When to Use | Key Features |
+|--------|---------|-------------|--------------|
+| `setup.sh` | Initial installation & environment setup | **Once** during first setup | Virtual env, dependencies, swap file |
+| `quick_start.sh` | **Complete restart sequence** | **After server reboot** or when starting fresh | All-in-one startup with validation |
+| `deploy_celery.sh` | Celery worker management | Start/stop/restart background services | Memory-optimized workers, PID management |
+| `run_app.sh` | Main application runner | Interactive monitoring/testing | Connection testing, graceful startup |
+| `monitor_resources.sh` | System resource monitoring | Check performance and memory usage | Real-time stats, alerts |
+| `auto_restart.sh` | Automatic service recovery | Background watchdog service | Auto-restart failed services |
+| `status.sh` | Service status check | Quick health check | Process status, resource usage |
+| `stop_celery.sh` | Clean service shutdown | When stopping system | Graceful worker termination |
+| `verify_setup.sh` | System setup validation | Before first run, troubleshooting | Comprehensive system check |
+
+**Most Common Usage:**
+- **Verify setup:** `./scripts/verify_setup.sh` (recommended first step)
+- **First time:** `./scripts/setup.sh` then `./scripts/quick_start.sh`
+- **After restart:** `./scripts/quick_start.sh`
+- **Check status:** `./scripts/status.sh`
 
 ### Manual Deployment
 
@@ -176,15 +203,18 @@ python3 src/core/main.py --config config/config.json --mode monitor
 
 ### Monitor System Status
 ```bash
-# Check service status
-./scripts/status.sh
+# Quick status check
+./scripts/deploy_celery.sh status
+
+# Comprehensive resource monitoring
+./scripts/monitor_resources.sh
 
 # Monitor task queues and workers (web UI)
-celery -A src.tasks.telegram_celery_tasks flower
-# View at http://localhost:5555
+# Access at http://YOUR_SERVER_IP:5555
+# (Flower is automatically started with quick_start.sh)
 
 # Stop all services
-./scripts/stop_celery.sh
+./scripts/deploy_celery.sh stop
 ```
 
 ### Command Line Options
@@ -258,10 +288,18 @@ telegram-ai-scraper/
 │   ├── config_sample.json        # Sample configuration template
 │   └── config.json              # Your actual configuration (create from sample)
 ├── scripts/                       # Deployment and management scripts
-│   ├── setup.sh                 # Setup script
-│   ├── deploy_celery.sh         # Comprehensive Celery management script
-│   ├── stop_celery.sh           # Stop all services script
-│   └── status.sh                # Service status monitoring script
+│   ├── setup.sh                 # Initial environment setup (run once)
+│   ├── quick_start.sh           # Complete restart sequence (after reboot)
+│   ├── deploy_celery.sh         # Celery worker management
+│   ├── run_app.sh               # Main application runner
+│   ├── monitor_resources.sh     # System resource monitoring
+│   ├── stop_celery.sh           # Alternative stop script
+│   ├── status.sh                # Service status check
+│   └── auto_restart.sh          # Automatic service recovery
+├── docs/                          # Documentation
+│   ├── RUNNING_GUIDE.md         # Step-by-step running instructions
+│   ├── MULTI_COUNTRY_COMPLETE_GUIDE.md # Multi-country setup guide
+│   └── TRANSLATION_GUIDE.md     # Translation features guide
 ├── logs/                          # Log files directory
 │   ├── main.log
 │   ├── telegram.log
@@ -269,9 +307,10 @@ telegram-ai-scraper/
 │   ├── openai.log
 │   ├── teams.log
 │   ├── sharepoint.log
-│   └── celery_worker.log
+│   └── celery_*.log             # Various Celery worker logs
 ├── data/                          # Data storage directory
 ├── pids/                          # Process ID files
+├── backups/                       # Backup files
 └── telegram-ai-scraper_env/      # Python virtual environment
 ```
 
@@ -441,6 +480,122 @@ This guide covers:
 - Configuration examples for Philippines, Singapore, and Malaysia
 - Migration guide from single-country setups
 - Performance benefits and troubleshooting
+
+## Troubleshooting
+
+### Common Issues and Solutions
+
+#### 1. Memory Issues on Small Instances (t3.small, etc.)
+**Symptoms:** Workers crashing, "Memory Error", system freezing
+**Solutions:**
+```bash
+# Check current memory usage
+./scripts/monitor_resources.sh
+
+# If memory usage > 80%, restart with fewer workers
+./scripts/deploy_celery.sh 1  # Use 1 worker per queue instead of default
+
+# Check if swap is active (should show 2GB)
+free -h
+```
+
+#### 2. Redis Connection Errors
+**Symptoms:** "Connection refused", "Redis server not available"
+**Solutions:**
+```bash
+# Check Redis status
+sudo systemctl status redis-server
+
+# Start Redis if stopped
+sudo systemctl start redis-server
+
+# Test Redis connection
+redis-cli ping  # Should return "PONG"
+```
+
+#### 3. Celery Workers Not Starting
+**Symptoms:** "No such file or directory", import errors
+**Solutions:**
+```bash
+# Ensure virtual environment is activated
+source telegram-ai-scraper_env/bin/activate
+
+# Check for path issues
+cd /home/ubuntu/TelegramScraper/telegram-ai-scraper
+python -c "import src.tasks.telegram_celery_tasks"  # Should not error
+
+# Clean restart
+./scripts/stop_celery.sh
+./scripts/quick_start.sh
+```
+
+#### 4. Telegram Authentication Issues
+**Symptoms:** "Authentication failed", "Session expired"
+**Solutions:**
+```bash
+# Interactive authentication setup (one-time)
+python src/core/main.py --config config/config.json --mode test
+
+# Follow prompts to enter phone number and verification code
+# This creates telegram-ai-scraper_env/session.session file
+```
+
+#### 5. OpenAI API Errors
+**Symptoms:** "Invalid model", "Rate limit exceeded"
+**Solutions:**
+```bash
+# Check config.json has correct model name
+grep -A 5 '"openai"' config/config.json
+# Should show "model": "gpt-4o-mini" (not "gpt-4o-mini-2024-07-18")
+
+# Test OpenAI connection
+python test_translation.py
+```
+
+#### 6. High Resource Usage
+**Symptoms:** System slow, high CPU/memory usage
+**Solutions:**
+```bash
+# Monitor resources continuously
+./scripts/monitor_resources.sh
+
+# Reduce worker concurrency in src/tasks/celery_config.py
+# Set worker_concurrency = 1 for all workers
+
+# Enable automatic restarts
+nohup ./scripts/auto_restart.sh &
+```
+
+#### 7. Services Not Restarting After Reboot
+**Symptoms:** Nothing working after server restart
+**Solutions:**
+```bash
+# Use the quick start script
+./scripts/quick_start.sh
+
+# Check what's actually running
+./scripts/status.sh
+
+# If issues persist, manual restart
+cd /home/ubuntu/TelegramScraper/telegram-ai-scraper
+source telegram-ai-scraper_env/bin/activate
+./scripts/deploy_celery.sh
+```
+
+### Log File Locations
+- **Main Application:** `logs/main.log`
+- **Telegram Tasks:** `logs/telegram_tasks.log`
+- **Celery Workers:** `logs/celery_*.log`
+- **OpenAI Integration:** `logs/openai.log`
+- **Teams Notifications:** `logs/teams.log`
+- **SharePoint Integration:** `logs/sharepoint.log`
+
+### Getting Help
+1. Check service status: `./scripts/status.sh`
+2. Monitor resources: `./scripts/monitor_resources.sh`
+3. Review relevant log files in `logs/` directory
+4. Ensure all configuration files are properly configured
+5. Verify virtual environment is activated before manual commands
 
 ## Contributing
 
