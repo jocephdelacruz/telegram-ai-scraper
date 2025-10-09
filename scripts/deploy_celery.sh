@@ -19,12 +19,24 @@ PID_DIR="$PROJECT_DIR/pids"
 DATA_DIR="$PROJECT_DIR/data"
 
 # Worker Configuration - Adjust these values as needed
-WORKER_MODE="consolidated"   # values: consolidated | split | original
-MAIN_PROCESSOR_WORKERS=1
-NOTIFICATIONS_WORKERS=1
-SHAREPOINT_WORKERS=1
-BACKUP_WORKERS=1
-MAINTENANCE_WORKERS=1
+WORKER_MODE="split"   # values: consolidated | split | original
+
+# Worker concurrency settings per mode
+# =====================================
+
+# CONSOLIDATED MODE: Single worker handles all queues
+ALL_WORKERS=1              # Used for consolidated mode - handles all queues together
+
+# SPLIT MODE: 3-tier architecture for optimal resource allocation  
+MAIN_PROCESSOR_WORKERS=1   # Used for all modes - AI-intensive telegram processing
+DATA_SERVICES_WORKERS=1    # Used for split mode - SharePoint/Backup/Teams operations
+MAINTENANCE_SPLIT_WORKERS=1 # Used for split mode - Cleanup/Monitoring tasks
+
+# ORIGINAL MODE: Individual workers per queue type
+NOTIFICATIONS_WORKERS=1    # Used for original mode - Teams notifications only
+SHAREPOINT_WORKERS=1       # Used for original mode - SharePoint operations only  
+BACKUP_WORKERS=1           # Used for original mode - Backup operations only
+MAINTENANCE_WORKERS=1      # Used for original mode - Maintenance/Monitoring tasks
 DEFAULT_LOG_LEVEL=info
 MAX_TASKS_PER_CHILD=100
 PREFETCH_MULTIPLIER=1
@@ -111,7 +123,7 @@ start_worker() {
     local logfile="$LOG_DIR/celery_${worker_name}.log"
 
     print_status "Starting $worker_name (queues: $queues, concurrency: $concurrency)..."
-    nohup "$VENV_DIR/bin/celery" -A src.tasks.telegram_celery_tasks.celery worker \
+    "$VENV_DIR/bin/celery" -A src.tasks.telegram_celery_tasks.celery worker \
         -n "${worker_name}@%h" \
         -Q "$queues" \
         --concurrency "$concurrency" \
@@ -124,13 +136,13 @@ start_worker() {
         --heartbeat-interval 10 \
         --without-gossip \
         --without-mingle \
-        > "$LOG_DIR/${worker_name}_startup.log" 2>&1 &
+        --detach
     
-    sleep 2
+    sleep 5
     if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
         print_success "$worker_name started (PID: $(cat "$pidfile"))"
     else
-        print_error "Failed to start $worker_name. See $LOG_DIR/${worker_name}_startup.log"
+        print_error "Failed to start $worker_name. Check if process is running manually."
         return 1
     fi
 }
@@ -139,16 +151,16 @@ start_worker() {
 # Function to start Celery Beat (scheduler)
 start_beat() {
     print_status "Starting Beat..."
-    nohup "$VENV_DIR/bin/celery" -A src.tasks.telegram_celery_tasks.celery beat \
+    "$VENV_DIR/bin/celery" -A src.tasks.telegram_celery_tasks.celery beat \
         --loglevel info \
         --pidfile "$PID_DIR/celery_beat.pid" \
         --logfile "$LOG_DIR/celery_beat.log" \
-        > "$LOG_DIR/celery_beat_startup.log" 2>&1 &
-    sleep 2
+        --detach
+    sleep 5
     if [ -f "$PID_DIR/celery_beat.pid" ] && kill -0 "$(cat "$PID_DIR/celery_beat.pid")" 2>/dev/null; then
         print_success "Beat started (PID: $(cat "$PID_DIR/celery_beat.pid"))"
     else
-        print_error "Beat failed. See celery_beat_startup.log"
+        print_error "Failed to start Beat. Check if process is running manually."
         return 1
     fi
 }
@@ -170,6 +182,17 @@ check_workers() {
 
 start_flower() {
     print_status "Starting Flower (port $FLOWER_PORT)..."
+    
+    # Check if Flower is installed
+    if ! "$VENV_DIR/bin/celery" flower --help >/dev/null 2>&1; then
+        print_warning "Flower not installed. Installing flower..."
+        "$VENV_DIR/bin/pip" install flower==2.0.1
+        if [ $? -ne 0 ]; then
+            print_error "Failed to install Flower. Skipping web monitoring."
+            return 1
+        fi
+    fi
+    
     nohup "$VENV_DIR/bin/celery" -A src.tasks.telegram_celery_tasks.celery flower \
         --port="$FLOWER_PORT" \
         --url_prefix=/ \
@@ -177,11 +200,16 @@ start_flower() {
         --persistent \
         > "$LOG_DIR/flower.log" 2>&1 &
     echo $! > "$PID_DIR/flower.pid"
-    sleep 2
+    sleep 3
     if kill -0 "$(cat "$PID_DIR/flower.pid")" 2>/dev/null; then
         print_success "Flower started (PID: $(cat "$PID_DIR/flower.pid"))"
+        print_success "Web monitoring: http://localhost:$FLOWER_PORT"
     else
         print_warning "Flower may not have started. Check flower.log"
+        # Show the error from the log
+        if [ -f "$LOG_DIR/flower.log" ]; then
+            print_warning "Flower error: $(tail -1 "$LOG_DIR/flower.log")"
+        fi
     fi
 }
 
@@ -315,14 +343,30 @@ show_status() {
 # Function to show logs
 show_logs() {
     print_status "Showing recent Celery logs..."
-    echo -e "\n${YELLOW}Recent Main Processor Logs:${NC}"
-    tail -n 20 "$LOG_DIR/celery_main_processor.log" 2>/dev/null || print_warning "No main processor logs found"
     
-    echo -e "\n${YELLOW}Recent Notifications Logs:${NC}"
-    tail -n 10 "$LOG_DIR/celery_notifications.log" 2>/dev/null || print_warning "No notifications logs found"
-    
-    echo -e "\n${YELLOW}Recent SharePoint Logs:${NC}"
-    tail -n 10 "$LOG_DIR/celery_sharepoint.log" 2>/dev/null || print_warning "No SharePoint logs found"
+    # Show logs based on current worker mode
+    if [ -f "$LOG_DIR/celery_all.log" ]; then
+        echo -e "\n${YELLOW}Recent Consolidated Worker Logs:${NC}"
+        tail -n 30 "$LOG_DIR/celery_all.log" 2>/dev/null || print_warning "No consolidated logs found"
+    elif [ -f "$LOG_DIR/celery_data_services.log" ]; then
+        echo -e "\n${YELLOW}Recent Main Processor Logs (AI/Telegram):${NC}"
+        tail -n 20 "$LOG_DIR/celery_main_processor.log" 2>/dev/null || print_warning "No main processor logs found"
+        
+        echo -e "\n${YELLOW}Recent Data Services Logs (SharePoint/Backup/Teams):${NC}"
+        tail -n 15 "$LOG_DIR/celery_data_services.log" 2>/dev/null || print_warning "No data services logs found"
+        
+        echo -e "\n${YELLOW}Recent Maintenance Logs (Cleanup/Monitoring):${NC}"
+        tail -n 10 "$LOG_DIR/celery_maintenance.log" 2>/dev/null || print_warning "No maintenance logs found"
+    else
+        echo -e "\n${YELLOW}Recent Main Processor Logs:${NC}"
+        tail -n 20 "$LOG_DIR/celery_main_processor.log" 2>/dev/null || print_warning "No main processor logs found"
+        
+        echo -e "\n${YELLOW}Recent Notifications Logs:${NC}"
+        tail -n 10 "$LOG_DIR/celery_notifications.log" 2>/dev/null || print_warning "No notifications logs found"
+        
+        echo -e "\n${YELLOW}Recent SharePoint Logs:${NC}"
+        tail -n 10 "$LOG_DIR/celery_sharepoint.log" 2>/dev/null || print_warning "No SharePoint logs found"
+    fi
 }
 
 
@@ -331,11 +375,12 @@ start_all_workers() {
     case "$WORKER_MODE" in
         consolidated)
             # Single worker handles all queues
-            start_worker "all" "telegram_processing,notifications,sharepoint,backup,maintenance" 2 || return 1
+            start_worker "all" "telegram_processing,notifications,sharepoint,backup,maintenance" $ALL_WORKERS || return 1
             ;;
         split)
-            start_worker "main_processor" "telegram_processing,sharepoint" $MAIN_PROCESSOR_WORKERS || return 1
-            start_worker "aux" "notifications,backup,maintenance" 1 || return 1
+            start_worker "main_processor" "telegram_processing" $MAIN_PROCESSOR_WORKERS || return 1
+            start_worker "data_services" "sharepoint,backup,notifications" $DATA_SERVICES_WORKERS || return 1
+            start_worker "maintenance" "maintenance,monitoring" $MAINTENANCE_SPLIT_WORKERS || return 1
             ;;
         original)
             start_worker "main_processor" "telegram_processing" $MAIN_PROCESSOR_WORKERS || return 1
@@ -400,12 +445,13 @@ case "${1:-deploy}" in
                 print_success "Services running:"
                 case "$WORKER_MODE" in
                     consolidated)
-                        echo "- Consolidated Worker: 1 worker (2 concurrency)"
+                        echo "- Consolidated Worker: $ALL_WORKERS worker ($ALL_WORKERS concurrency)"
                         echo "  Queues: telegram_processing,notifications,sharepoint,backup,maintenance"
                         ;;
                     split)
-                        echo "- Main Processor: $MAIN_PROCESSOR_WORKERS workers"
-                        echo "- Auxiliary Worker: 1 worker"
+                        echo "- Main Processor: $MAIN_PROCESSOR_WORKERS workers (telegram_processing)"
+                        echo "- Data Services Worker: $DATA_SERVICES_WORKERS worker (sharepoint,backup,notifications)"
+                        echo "- Maintenance Worker: $MAINTENANCE_SPLIT_WORKERS worker (maintenance,monitoring)"
                         ;;
                     original)
                         echo "- Telegram Processing Workers: $MAIN_PROCESSOR_WORKERS workers"
@@ -475,6 +521,10 @@ case "${1:-deploy}" in
         check_prerequisites
         start_worker "maintenance" "maintenance,monitoring" $MAINTENANCE_WORKERS
         ;;
+    "data_services")
+        check_prerequisites
+        start_worker "data_services" "sharepoint,backup,notifications" $DATA_SERVICES_WORKERS
+        ;;
     "beat")
         check_prerequisites
         start_beat
@@ -487,11 +537,12 @@ case "${1:-deploy}" in
         echo "Commands:"
         echo "  deploy        - Start all workers, beat scheduler, and offer main app (default)"
         echo "  start/all     - Same as deploy"
-        echo "  main          - Start main processing workers only"
-        echo "  notifications - Start notifications workers only"
-        echo "  sharepoint    - Start SharePoint workers only"
-        echo "  backup        - Start backup workers only"
-        echo "  maintenance   - Start maintenance workers only"
+        echo "  main          - Start main processing workers only (AI/Telegram)"
+        echo "  data_services - Start data services worker (SharePoint/Backup/Teams)"
+        echo "  maintenance   - Start maintenance workers only (Cleanup/Monitoring)"
+        echo "  notifications - Start notifications workers only (individual mode)"
+        echo "  sharepoint    - Start SharePoint workers only (individual mode)"
+        echo "  backup        - Start backup workers only (individual mode)"
         echo "  beat          - Start Celery Beat scheduler only"
         echo "  stop          - Stop all workers and beat scheduler (graceful)"
         echo "  stop --force  - Force stop all services immediately"

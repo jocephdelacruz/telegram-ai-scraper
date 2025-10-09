@@ -79,11 +79,17 @@ monitor_services() {
             sleep 10
         fi
         
-        # Check if deploy script is configured for consolidated mode
+        # Check worker mode and restart accordingly
         if grep -q 'WORKER_MODE="consolidated"' "$SCRIPT_DIR/deploy_celery.sh"; then
+            # Consolidated mode - single worker handles all queues
             check_and_restart "celery_all" "$SCRIPT_DIR/deploy_celery.sh start"
+        elif grep -q 'WORKER_MODE="split"' "$SCRIPT_DIR/deploy_celery.sh"; then
+            # Split mode - 3-tier architecture
+            check_and_restart "celery_main_processor" "cd $PROJECT_DIR && $SCRIPT_DIR/deploy_celery.sh main"
+            check_and_restart "celery_data_services" "cd $PROJECT_DIR && $SCRIPT_DIR/deploy_celery.sh data_services"
+            check_and_restart "celery_maintenance" "cd $PROJECT_DIR && $SCRIPT_DIR/deploy_celery.sh maintenance"
         else
-            # Check individual services (fallback)
+            # Original mode - individual workers per queue type
             check_and_restart "celery_main_processor" "cd $PROJECT_DIR && $SCRIPT_DIR/deploy_celery.sh main"
             check_and_restart "celery_notifications" "cd $PROJECT_DIR && $SCRIPT_DIR/deploy_celery.sh notifications"
             check_and_restart "celery_sharepoint" "cd $PROJECT_DIR && $SCRIPT_DIR/deploy_celery.sh sharepoint"
@@ -110,6 +116,11 @@ case "${1:-monitor}" in
         log_message "Performing single service check..."
         if grep -q 'WORKER_MODE="consolidated"' "$SCRIPT_DIR/deploy_celery.sh"; then
             check_and_restart "celery_all" "$SCRIPT_DIR/deploy_celery.sh start"
+        elif grep -q 'WORKER_MODE="split"' "$SCRIPT_DIR/deploy_celery.sh"; then
+            # Split mode - check the 3 workers
+            check_and_restart "celery_main_processor" "cd $PROJECT_DIR && $SCRIPT_DIR/deploy_celery.sh main"
+            check_and_restart "celery_data_services" "cd $PROJECT_DIR && $SCRIPT_DIR/deploy_celery.sh data_services"
+            check_and_restart "celery_maintenance" "cd $PROJECT_DIR && $SCRIPT_DIR/deploy_celery.sh maintenance"
         fi
         check_and_restart "celery_beat" "cd $PROJECT_DIR && $SCRIPT_DIR/deploy_celery.sh beat"
         ;;

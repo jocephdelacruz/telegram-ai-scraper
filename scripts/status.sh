@@ -48,14 +48,38 @@ echo ""
 echo "Celery Workers:"
 echo "──────────────"
 
-# Check individual workers
+# Auto-detect worker mode based on existing PID files
 running_workers=0
-total_workers=4
+total_workers=0
 
-check_process "Telegram Processing Worker" "$PID_DIR/celery_main_processor.pid" && ((running_workers++))
-check_process "Notifications Worker" "$PID_DIR/celery_notifications.pid" && ((running_workers++))
-check_process "SharePoint Worker" "$PID_DIR/celery_sharepoint.pid" && ((running_workers++))
-check_process "Backup Worker" "$PID_DIR/celery_backup.pid" && ((running_workers++))
+if [ -f "$PID_DIR/celery_all.pid" ]; then
+    # Consolidated mode - single worker handling all queues
+    echo "Mode: Consolidated Worker"
+    total_workers=1
+    check_process "Consolidated Worker (all queues)" "$PID_DIR/celery_all.pid" && ((running_workers++))
+elif [ -f "$PID_DIR/celery_main_processor.pid" ] && [ -f "$PID_DIR/celery_data_services.pid" ]; then
+    # Split mode - main + data services + maintenance workers
+    echo "Mode: Split Workers (3-tier)"
+    total_workers=3
+    check_process "Main Processor Worker (AI/Telegram)" "$PID_DIR/celery_main_processor.pid" && ((running_workers++))
+    check_process "Data Services Worker (SharePoint/Backup/Teams)" "$PID_DIR/celery_data_services.pid" && ((running_workers++))
+    check_process "Maintenance Worker (Cleanup/Monitoring)" "$PID_DIR/celery_maintenance.pid" && ((running_workers++))
+else
+    # Original mode - individual workers for each queue
+    echo "Mode: Individual Workers"
+    total_workers=5
+    check_process "Telegram Processing Worker" "$PID_DIR/celery_main_processor.pid" && ((running_workers++))
+    check_process "Notifications Worker" "$PID_DIR/celery_notifications.pid" && ((running_workers++))
+    check_process "SharePoint Worker" "$PID_DIR/celery_sharepoint.pid" && ((running_workers++))
+    check_process "Backup Worker" "$PID_DIR/celery_backup.pid" && ((running_workers++))
+    check_process "Maintenance Worker" "$PID_DIR/celery_maintenance.pid" && ((running_workers++))
+fi
+
+# Check Beat scheduler
+echo ""
+echo "Scheduler:"
+echo "─────────"
+check_process "Celery Beat Scheduler" "$PID_DIR/celery_beat.pid"
 
 echo ""
 echo "Monitoring:"
