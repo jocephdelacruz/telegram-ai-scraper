@@ -42,7 +42,7 @@ You can test the translation feature using the provided test script:
 
 ```bash
 cd /home/ubuntu/TelegramScraper/telegram-ai-scraper
-python3 test_translation.py
+python3 tests/test_translation.py
 ```
 
 This will test various message types including:

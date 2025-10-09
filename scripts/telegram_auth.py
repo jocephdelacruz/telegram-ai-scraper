@@ -65,25 +65,59 @@ async def authenticate_telegram():
         
         # This should trigger authentication prompts
         print("📞 Connecting to Telegram servers...")
-        success = await telegram_scraper.start_client()
         
-        if success:
-            print("✅ Telegram authentication successful!")
-            print("✅ Session file created: telegram_session.session")
+        try:
+            success = await telegram_scraper.start_client()
             
-            # Test by getting user info
-            try:
-                client = telegram_scraper.client
-                me = await client.get_me()
-                print(f"✅ Logged in as: {me.first_name} {me.last_name or ''} (@{me.username or 'no_username'})")
-                print(f"✅ Phone: {me.phone}")
-            except Exception as e:
-                print(f"⚠️  Warning: Could not get user info: {e}")
+            if success:
+                print("✅ Telegram authentication successful!")
+                print("✅ Session file created: telegram_session.session")
+                
+                # Test by getting user info
+                try:
+                    client = telegram_scraper.client
+                    me = await client.get_me()
+                    print(f"✅ Logged in as: {me.first_name} {me.last_name or ''} (@{me.username or 'no_username'})")
+                    print(f"✅ Phone: {me.phone}")
+                except Exception as e:
+                    print(f"⚠️  Warning: Could not get user info: {e}")
+                
+                await telegram_scraper.stop_client()
+                return True
+            else:
+                print("❌ Telegram authentication failed")
+                return False
+                
+        except Exception as auth_error:
+            print(f"❌ Detailed authentication error: {auth_error}")
+            print(f"❌ Error type: {type(auth_error).__name__}")
             
-            await telegram_scraper.stop_client()
-            return True
-        else:
-            print("❌ Telegram authentication failed")
+            # Common error scenarios
+            if "PHONE_NUMBER_INVALID" in str(auth_error):
+                print("🔧 Issue: Invalid phone number format")
+                print("💡 Solution: Ensure phone number includes country code (e.g., +639693532299)")
+            elif "API_ID_INVALID" in str(auth_error):
+                print("🔧 Issue: Invalid API_ID")
+                print("💡 Solution: Double-check API_ID from https://my.telegram.org/apps")
+            elif "API_HASH_INVALID" in str(auth_error):
+                print("🔧 Issue: Invalid API_HASH")
+                print("💡 Solution: Double-check API_HASH from https://my.telegram.org/apps")
+            elif "PHONE_CODE_EXPIRED" in str(auth_error):
+                print("🔧 Issue: SMS verification code expired")
+                print("💡 Solution: Request a new code and try again quickly")
+            elif "PHONE_CODE_INVALID" in str(auth_error):
+                print("🔧 Issue: Invalid SMS verification code")
+                print("💡 Solution: Double-check the code from your SMS")
+            elif "ConnectionError" in str(auth_error) or "TimeoutError" in str(auth_error):
+                print("🔧 Issue: Network connectivity problem")
+                print("💡 Solution: Check internet connection and firewall settings")
+            else:
+                print("💡 General troubleshooting:")
+                print("   - Verify API credentials at https://my.telegram.org/apps")
+                print("   - Ensure phone number format is correct (+country_code_number)")
+                print("   - Check if your IP is blocked by Telegram")
+                print("   - Try using a VPN if in a restricted region")
+            
             return False
             
     except Exception as e:

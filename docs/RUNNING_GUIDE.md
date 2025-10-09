@@ -167,7 +167,14 @@ Starting Telegram AI Scraper Monitoring
 # Verify setup
 ./scripts/verify_setup.sh
 
-# Manual Telegram authentication (if needed)
+# Telegram credential validation and management (RECOMMENDED)
+python3 tests/validate_telegram_config.py
+# - Comprehensive validation of API credentials
+# - Network connectivity testing
+# - Interactive credential updates
+# - Environment dependency checking
+
+# Manual Telegram authentication (after validation passes)
 python3 scripts/telegram_auth.py
 
 # Stop all services
@@ -271,6 +278,23 @@ pip install -r requirements.txt
 ```bash
 chmod +x scripts/*.sh
 chmod +x src/core/main.py
+```
+
+#### Telegram Authentication Issues
+```bash
+# STEP 1: Always run validation first
+python3 tests/validate_telegram_config.py
+# This checks everything: credentials, network, environment
+
+# STEP 2: If you get "ApiIdInvalidError" or credential issues:
+# Choose option 3 in the validation tool to update credentials
+# Or manually get new credentials from https://my.telegram.org/apps
+
+# STEP 3: After credentials are fixed, authenticate:
+python3 scripts/telegram_auth.py
+
+# STEP 4: Clean session if needed:
+rm telegram_session.session  # Forces fresh authentication
 ```
 
 #### Config File Issues

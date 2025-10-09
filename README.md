@@ -172,8 +172,14 @@ chmod +x scripts/quick_start.sh
 | `monitor_resources.sh` | System resource monitoring | Check performance and memory usage | Real-time stats, alerts |
 | `auto_restart.sh` | Automatic service recovery | Background watchdog service | Auto-restart failed services |
 | `status.sh` | Service status check | Quick health check | Process status, resource usage |
-
 | `verify_setup.sh` | System setup validation | Before first run, troubleshooting | Comprehensive system check |
+
+#### Testing & Validation Tools
+| Script | Purpose | When to Use | Key Features |
+|--------|---------|-------------|--------------|
+| `tests/validate_telegram_config.py` | **Telegram credential validator** | Before authentication, credential issues | Network tests, credential validation, interactive updates |
+| `tests/test_translation.py` | Translation system testing | Verify OpenAI integration | Test language detection and translation |
+| `tests/test_components.py` | Component testing | Development and debugging | Individual component validation |
 
 **Most Common Usage:**
 - **Verify setup:** `./scripts/verify_setup.sh` (recommended first step)
@@ -307,9 +313,13 @@ telegram-ai-scraper/
 │   ├── deploy_celery.sh         # Celery worker management
 │   ├── run_app.sh               # Main application runner
 │   ├── monitor_resources.sh     # System resource monitoring
-
+│   ├── telegram_auth.py         # Interactive Telegram authentication
 │   ├── status.sh                # Service status check
 │   └── auto_restart.sh          # Automatic service recovery
+├── tests/                         # Testing and validation tools
+│   ├── validate_telegram_config.py # Telegram credential validator & manager
+│   ├── test_components.py       # Component testing
+│   └── test_translation.py      # Translation testing
 ├── docs/                          # Documentation
 │   ├── RUNNING_GUIDE.md         # Step-by-step running instructions
 │   ├── MULTI_COUNTRY_COMPLETE_GUIDE.md # Multi-country setup guide
@@ -544,14 +554,24 @@ python -c "import src.tasks.telegram_celery_tasks"  # Should not error
 ```
 
 #### 4. Telegram Authentication Issues
-**Symptoms:** "Telegram client not initialized", "Authentication failed", "Session expired"
+**Symptoms:** "Telegram client not initialized", "Authentication failed", "Session expired", "ApiIdInvalidError"
 **Solutions:**
 ```bash
-# Use the dedicated authentication script (recommended)
+# STEP 1: Run comprehensive validation (recommended first step)
+python3 tests/validate_telegram_config.py
+# This will check:
+# - API credentials format and validity
+# - Network connectivity to Telegram servers
+# - Phone number format
+# - Environment dependencies
+
+# STEP 2: If validation passes, authenticate
 python3 scripts/telegram_auth.py
 
-# Follow prompts to enter SMS verification code
-# This creates telegram_session.session file
+# STEP 3: If you get ApiIdInvalidError, update credentials
+python3 tests/validate_telegram_config.py
+# Choose option 3 to update credentials interactively
+# Get new credentials from https://my.telegram.org/apps
 
 # Alternative: Test connections to trigger authentication
 ./scripts/run_app.sh test
@@ -566,7 +586,7 @@ grep -A 5 '"openai"' config/config.json
 # Should show "model": "gpt-4o-mini" (not "gpt-4o-mini-2024-07-18")
 
 # Test OpenAI connection
-python test_translation.py
+python tests/test_translation.py
 ```
 
 #### 6. High Resource Usage

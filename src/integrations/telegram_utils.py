@@ -42,12 +42,43 @@ class TelegramScraper:
     async def start_client(self):
         """Start the Telegram client and authenticate if needed"""
         try:
-            await self.client.start(phone=self.phone_number)
+            # More explicit authentication with better error handling
+            await self.client.start(
+                phone=lambda: self.phone_number,
+                code_callback=self._code_callback,
+                password=self._password_callback
+            )
             LOGGER.writeLog("Telegram client started successfully")
             return True
         except Exception as e:
             LOGGER.writeLog(f"Failed to start Telegram client: {e}")
-            return False
+            # Re-raise the exception so the calling code can handle it with detailed messages
+            raise e
+
+    def _code_callback(self):
+        """Callback for SMS verification code input"""
+        try:
+            code = input("Please enter the verification code sent to your phone: ")
+            return code.strip()
+        except KeyboardInterrupt:
+            print("\n❌ Authentication cancelled by user")
+            raise
+        except Exception as e:
+            print(f"❌ Error getting verification code: {e}")
+            raise
+
+    def _password_callback(self):
+        """Callback for 2FA password input (if enabled)"""
+        try:
+            import getpass
+            password = getpass.getpass("Please enter your 2FA password (if enabled): ")
+            return password.strip()
+        except KeyboardInterrupt:
+            print("\n❌ Authentication cancelled by user")
+            raise
+        except Exception as e:
+            print(f"❌ Error getting 2FA password: {e}")
+            raise
 
     async def stop_client(self):
         """Stop the Telegram client"""
