@@ -178,6 +178,8 @@ echo "• Check status: ./scripts/deploy_celery.sh status"
 echo "• Restart services: ./scripts/deploy_celery.sh restart"
 echo "• Stop services: ./scripts/deploy_celery.sh stop"
 echo "• Test connections: ./scripts/run_app.sh test"
+echo "• Start monitoring: ./scripts/run_app.sh monitor"
+echo "• Stop monitoring: pkill -f 'python3 src/core/main.py --mode monitor'"
 echo ""
 echo "📁 Important Directories:"
 echo "• Configuration: config/config.json"
@@ -186,15 +188,25 @@ echo "• Data: data/"
 echo "• Process IDs: pids/"
 echo ""
 
-# Optional: Ask if user wants to start monitoring
-echo "Would you like to start real-time monitoring now? (y/n)"
-read -r response
-if [[ "$response" =~ ^[Yy]$ ]]; then
-    echo ""
-    print_status "Starting real-time monitoring..."
-    echo "Press Ctrl+C to stop monitoring"
-    echo ""
-    ./scripts/run_app.sh monitor
-fi
+# # Optional: Ask if user wants to start monitoring (only if not already running)
+# print_status "Checking if monitoring is already running..."
+
+# # Check if main.py --mode monitor is already running
+# if pgrep -f "python3 src/core/main.py --mode monitor" > /dev/null; then
+#     print_success "Real-time monitoring is already running"
+#     echo "• To view monitoring output: tail -f logs/main.log"
+#     echo "• To stop monitoring: pkill -f 'python3 src/core/main.py --mode monitor'"
+# else
+#     echo ""
+#     echo "Would you like to start real-time monitoring now? (y/n)"
+#     read -r response
+#     if [[ "$response" =~ ^[Yy]$ ]]; then
+#         echo ""
+#         print_status "Starting real-time monitoring..."
+#         echo "Press Ctrl+C to stop monitoring"
+#         echo ""
+#         ./scripts/run_app.sh monitor
+#     fi
+# fi
 
 print_status "Quick start script completed"

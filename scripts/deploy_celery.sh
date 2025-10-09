@@ -377,15 +377,16 @@ case "${1:-deploy}" in
 
             # Option to start monitoring
             echo ""
-            read -p "Start real-time monitoring? (y/n): " -n 1 -r
+            read -p "Start real-time monitoring now? (y/n): " -n 1 -r
             echo ""
             if [[ $REPLY =~ ^[Yy]$ ]]; then
                 echo ""
                 echo "=========================================="
-                echo "Starting Telegram AI Scraper Monitoring"
+                echo "🔄 Starting Telegram AI Scraper Monitoring"
                 echo "=========================================="
                 echo ""
-                print_status "Press Ctrl+C to stop monitoring"
+                print_status "Monitoring is now running in foreground mode"
+                print_status "Press Ctrl+C to stop monitoring and return to prompt"
                 echo ""
                 
                 # Start main application
