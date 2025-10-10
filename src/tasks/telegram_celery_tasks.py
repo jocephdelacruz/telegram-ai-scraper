@@ -473,87 +473,53 @@ async def fetch_messages_async(telegram_scraper, all_channels, config, cutoff_ti
         await telegram_scraper.start_client()
         LOGGER.writeLog("Telegram client started for periodic fetch")
         
-        # Fetch messages from each channel
+        # Initialize Redis for duplicate detection
+        import redis
+        try:
+            redis_client = redis.Redis(host='localhost', port=6379, db=1)
+            redis_client.ping()  # Test connection
+        except Exception as redis_error:
+            LOGGER.writeLog(f"Redis connection failed, proceeding without duplicate detection: {redis_error}")
+            redis_client = None
+        
+        # Fetch messages from each channel with filtering applied at retrieval level
         for channel_info in all_channels:
             try:
                 channel = channel_info['channel']
                 country_code = channel_info['country_code']
                 
-                # Get recent messages using configured limit
-                messages = await telegram_scraper.get_channel_messages(channel, limit=message_limit)
+                # Get recent messages with age and duplicate filtering applied
+                messages = await telegram_scraper.get_channel_messages(
+                    channel, 
+                    limit=message_limit, 
+                    cutoff_time=cutoff_time,
+                    redis_client=redis_client,
+                    log_found_messages=True  # Let the utils function handle detailed logging
+                )
                 
-                if messages:
-                    LOGGER.writeLog(f"Found {len(messages)} recent messages from {channel}")
+                # Process each message that passed all filters
+                for message_data in messages:
+                    # Add country information
+                    message_data['country_code'] = country_code
+                    message_data['Country'] = channel_info['country_name']
+                    message_data['text'] = message_data.get('Message_Text', '')
+                    message_data['id'] = message_data.get('Message_ID', '')
+                    message_data['channel'] = channel
                     
-                    # Process each message with age filtering and duplicate detection
-                    for message_data in messages:
-                        message_id = message_data.get('Message_ID', '')
-                        
-                        # Check if message was already processed (duplicate detection using Redis)
-                        if message_id:
-                            import redis
-                            try:
-                                redis_client = redis.Redis(host='localhost', port=6379, db=1)  # Use db=1 for tracking
-                                duplicate_key = f"processed_msg:{channel}:{message_id}"
-                                
-                                if redis_client.exists(duplicate_key):
-                                    skipped_messages += 1
-                                    LOGGER.writeLog(f"Skipping duplicate message from {channel} (ID: {message_id}) - already processed")
-                                    continue
-                                
-                                # DON'T mark as processed yet - wait until after successful AI processing
-                                
-                            except Exception as redis_error:
-                                LOGGER.writeLog(f"Redis duplicate check failed, processing message anyway: {redis_error}")
-                                # Continue processing if Redis fails
-                        
-                        # Parse message date for age filtering
-                        message_date_str = message_data.get('Date', '')
-                        message_time_str = message_data.get('Time', '')
-                        
-                        if message_date_str and message_time_str:
-                            try:
-                                # Combine date and time to create datetime object
-                                message_datetime_str = f"{message_date_str} {message_time_str}"
-                                message_datetime = datetime.strptime(message_datetime_str, '%Y-%m-%d %H:%M:%S')
-                                
-                                # Skip messages that are too old
-                                if message_datetime < cutoff_time:
-                                    skipped_messages += 1
-                                    age_diff = cutoff_time - message_datetime
-                                    LOGGER.writeLog(f"Skipping old message from {channel} (ID: {message_id}, age: {age_diff}, too old by {age_diff})")
-                                    continue
-                                    
-                            except ValueError as e:
-                                LOGGER.writeLog(f"Could not parse message date/time from {channel}: {e}")
-                                # If we can't parse the date, process the message anyway
-                                pass
-                        
-                        # Add country information
-                        message_data['country_code'] = country_code
-                        message_data['Country'] = channel_info['country_name']
-                        message_data['text'] = message_data.get('Message_Text', '')
-                        message_data['id'] = message_data.get('Message_ID', '')
-                        message_data['channel'] = channel
-                        
-                        # Log first 20 characters of message for visibility
-                        message_preview = message_data.get('Message_Text', '')[:20].replace('\n', ' ').strip()
-                        message_id = message_data.get('Message_ID', 'N/A')
-                        message_date_info = f"({message_date_str} {message_time_str})" if message_date_str and message_time_str else ""
-                        
-                        if message_preview:
-                            LOGGER.writeLog(f"✅ QUEUEING message from {channel}: '{message_preview}...' " + 
-                                          f"(ID: {message_id}) {message_date_info} - PASSES all filters")
-                        
-                        # Queue message for processing (async, non-blocking)
-                        task = process_telegram_message.delay(message_data, config)
-                        total_messages += 1
-                        LOGGER.writeLog(f"Task {task.id} queued for message {message_id} from {channel}")
-                        
-                        # Small delay to avoid overwhelming the system
-                        await asyncio.sleep(0.1)
-                else:
-                    LOGGER.writeLog(f"No messages found in {channel}")
+                    # Log that message is being queued for processing
+                    message_id = message_data.get('Message_ID', 'N/A')
+                    message_date_str = message_data.get('Date', '')
+                    message_time_str = message_data.get('Time', '')
+                    message_date_info = f"({message_date_str} {message_time_str})" if message_date_str and message_time_str else ""
+                    
+                    LOGGER.writeLog(f"✅ QUEUING NEW message {message_id} from {channel} for processing {message_date_info}")
+                    
+                    # Queue message for processing (async, non-blocking)
+                    task = process_telegram_message.delay(message_data, config)
+                    total_messages += 1
+                    
+                    # Small delay to avoid overwhelming the system
+                    await asyncio.sleep(0.1)
                     
             except Exception as e:
                 LOGGER.writeLog(f"Error fetching from channel {channel_info['channel']}: {e}")

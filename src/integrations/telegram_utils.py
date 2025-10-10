@@ -116,16 +116,19 @@ class TelegramScraper:
             LOGGER.writeLog(f"Failed to get entity for channel {channel_username}: {e}")
             return None
 
-    async def get_channel_messages(self, channel_username, limit=100):
+    async def get_channel_messages(self, channel_username, limit=10, cutoff_time=None, redis_client=None, log_found_messages=True):
         """
-        Get recent messages from a channel
+        Get recent messages from a channel with optional filtering
         
         Args:
             channel_username: Channel username (e.g., @channelname)
             limit: Number of messages to retrieve
+            cutoff_time: Only return messages newer than this datetime (optional)
+            redis_client: Redis client for duplicate detection (optional)
+            log_found_messages: Whether to log found messages (default True for backward compatibility)
             
         Returns:
-            List of message dictionaries
+            List of message dictionaries (only new/valid messages if filters applied)
         """
         try:
             entity = await self.get_channel_entity(channel_username)
@@ -135,17 +138,73 @@ class TelegramScraper:
             client = self._ensure_client()
             messages = []
             message_count = 0
+            new_messages = 0
+            duplicate_count = 0
+            old_messages = 0
+            
             async for message in client.iter_messages(entity, limit=limit):
                 message_data = await self.parse_message(message, channel_username)
                 if message_data:
+                    message_count += 1
+                    message_id = message_data.get('Message_ID', '')
+                    
+                    # Apply duplicate detection if Redis client provided
+                    if redis_client and message_id:
+                        try:
+                            duplicate_key = f"processed_msg:{channel_username}:{message_id}"
+                            if redis_client.exists(duplicate_key):
+                                duplicate_count += 1
+                                continue  # Skip duplicates, don't log or add to results
+                        except Exception as redis_error:
+                            LOGGER.writeLog(f"Redis duplicate check failed for {channel_username}: {redis_error}")
+                    
+                    # Apply age filtering if cutoff_time provided
+                    if cutoff_time:
+                        message_date_str = message_data.get('Date', '')
+                        message_time_str = message_data.get('Time', '')
+                        
+                        if message_date_str and message_time_str:
+                            try:
+                                message_datetime_str = f"{message_date_str} {message_time_str}"
+                                message_datetime = datetime.strptime(message_datetime_str, '%Y-%m-%d %H:%M:%S')
+                                
+                                if message_datetime < cutoff_time:
+                                    old_messages += 1
+                                    continue  # Skip old messages, don't log or add to results
+                            except ValueError as e:
+                                LOGGER.writeLog(f"Could not parse message date/time from {channel_username}: {e}")
+                                # If we can't parse the date, include the message
+                    
+                    # Message passed all filters - add to results
                     messages.append(message_data)
-                    # Log message preview for visibility
-                    message_preview = (message_data.get('Message_Text', '') or '')[:20].replace('\n', ' ').strip()
-                    if message_preview:
-                        LOGGER.writeLog(f"Found message from {channel_username}: '{message_preview}...' (ID: {message_data.get('Message_ID', 'N/A')})")
-                message_count += 1
+                    new_messages += 1
+                    
+                    # Log message preview only if requested and message is new
+                    if log_found_messages:
+                        message_preview = (message_data.get('Message_Text', '') or '')[:20].replace('\n', ' ').strip()
+                        if message_preview:
+                            LOGGER.writeLog(f"Found NEW message from {channel_username}: '{message_preview}...' (ID: {message_data.get('Message_ID', 'N/A')})")
 
-            LOGGER.writeLog(f"Retrieved {len(messages)} valid messages from {channel_username} (checked {message_count} total)")
+            # Provide summary based on filtering applied
+            if cutoff_time or redis_client:
+                # Detailed logging when filtering is applied
+                if new_messages > 0:
+                    LOGGER.writeLog(f"Retrieved {new_messages} NEW messages from {channel_username} (checked {message_count} total, skipped {duplicate_count} duplicates, {old_messages} too old)")
+                else:
+                    skip_reasons = []
+                    if duplicate_count > 0:
+                        skip_reasons.append(f"{duplicate_count} duplicates")
+                    if old_messages > 0:
+                        skip_reasons.append(f"{old_messages} too old")
+                    if message_count == 0:
+                        LOGGER.writeLog(f"No messages found in {channel_username}")
+                    else:
+                        reason_text = ", ".join(skip_reasons) if skip_reasons else "unknown reasons"
+                        LOGGER.writeLog(f"No new messages from {channel_username} (checked {message_count} total, skipped: {reason_text})")
+            else:
+                # Simple logging for backward compatibility
+                LOGGER.writeLog(f"Retrieved {len(messages)} valid messages from {channel_username} (checked {message_count} total)")
+            
             return messages
         except Exception as e:
             LOGGER.writeLog(f"Failed to get messages from {channel_username}: {e}")
