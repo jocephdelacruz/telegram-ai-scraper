@@ -230,37 +230,3 @@ class FileHandling:
         except Exception as e:
             get_logger().writeLog(f"Error getting modification time of {self.filename}: {e}")
             return None
-
-
-    def backup(self, backup_suffix=None):
-        """
-        Create a backup of the file
-        
-        Args:
-            backup_suffix: Suffix for backup file (default: timestamp)
-            
-        Returns:
-            Boolean indicating success
-        """
-        try:
-            if not os.path.exists(self.filename):
-                return False
-
-            if backup_suffix is None:
-                backup_suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
-            
-            backup_filename = f"{self.filename}.backup_{backup_suffix}"
-            
-            # Read original content
-            with open(self.filename, 'rb') as original:
-                content = original.read()
-            
-            # Write backup
-            with open(backup_filename, 'wb') as backup:
-                backup.write(content)
-            
-            get_logger().writeLog(f"Created backup: {backup_filename}")
-            return True
-        except Exception as e:
-            get_logger().writeLog(f"Error creating backup of {self.filename}: {e}")
-            return False

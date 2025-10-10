@@ -90,7 +90,6 @@ pip install -r requirements.txt
 echo "Creating required directories..."
 mkdir -p logs
 mkdir -p data
-mkdir -p backups
 
 # Test Redis connection
 echo "Testing Redis connection..."

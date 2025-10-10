@@ -360,7 +360,6 @@ telegram-ai-scraper/
 │   └── celery_*.log             # Various Celery worker logs
 ├── data/                          # Data storage directory
 ├── pids/                          # Process ID files
-├── backups/                       # Backup files
 └── telegram-ai-scraper_env/      # Python virtual environment
 ```
 
