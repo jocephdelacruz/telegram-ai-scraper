@@ -22,34 +22,105 @@ def test_message_processing():
         config_handler = fh.FileHandling(config_path)
         config = config_handler.read_json()
         
-        # Create a fake message that should pass all filters
+        # Create fake messages for Iraq dual-language keyword tests
         current_time = datetime.now()
-        fake_message = {
-            'Message_ID': 999999,
-            'Channel': '@test_channel',
-            'Date': current_time.strftime('%Y-%m-%d'),
-            'Time': current_time.strftime('%H:%M:%S'),
-            'Author': '@test_user',
-            'Message_Text': 'This is a test message for processing احتجاج مظاهرة',
-            'text': 'This is a test message for processing احتجاج مظاهرة',
-            'id': 999999,
-            'channel': '@test_channel',
-            'country_code': 'iraq',
-            'Country': 'Iraq'
-        }
-        
-        print(f"🧪 Testing message processing pipeline...")
-        print(f"Message ID: {fake_message['Message_ID']}")
-        print(f"Message Text: {fake_message['Message_Text']}")
-        print(f"Date/Time: {fake_message['Date']} {fake_message['Time']}")
-        
-        # Submit task for processing
-        task = process_telegram_message.delay(fake_message, config)
-        print(f"✅ Task submitted: {task.id}")
-        print(f"📋 Check logs/telegram_tasks.log for processing results")
-        print(f"📋 Check Redis: redis-cli -n 1 get 'processed_msg:@test_channel:999999'")
-        
-        return task.id
+        messages = [
+            {
+                'Message_ID': 999999,
+                'Channel': '@test_channel',
+                'Date': current_time.strftime('%Y-%m-%d'),
+                'Time': current_time.strftime('%H:%M:%S'),
+                'Author': '@test_user',
+                'Message_Text': 'protest in Baghdad',
+                'text': 'protest in Baghdad',
+                'id': 999999,
+                'channel': '@test_channel',
+                'country_code': 'iraq',
+                'Country': 'Iraq',
+                'desc': 'Iraq English significant keyword'
+            },
+            {
+                'Message_ID': 1000000,
+                'Channel': '@test_channel',
+                'Date': current_time.strftime('%Y-%m-%d'),
+                'Time': current_time.strftime('%H:%M:%S'),
+                'Author': '@test_user',
+                'Message_Text': 'احتجاج في بغداد',
+                'text': 'احتجاج في بغداد',
+                'id': 1000000,
+                'channel': '@test_channel',
+                'country_code': 'iraq',
+                'Country': 'Iraq',
+                'desc': 'Iraq Arabic significant keyword'
+            },
+            {
+                'Message_ID': 1000001,
+                'Channel': '@test_channel',
+                'Date': current_time.strftime('%Y-%m-%d'),
+                'Time': current_time.strftime('%H:%M:%S'),
+                'Author': '@test_user',
+                'Message_Text': 'This is a sports update',
+                'text': 'This is a sports update',
+                'id': 1000001,
+                'channel': '@test_channel',
+                'country_code': 'iraq',
+                'Country': 'Iraq',
+                'desc': 'Iraq English trivial keyword'
+            },
+            {
+                'Message_ID': 1000002,
+                'Channel': '@test_channel',
+                'Date': current_time.strftime('%Y-%m-%d'),
+                'Time': current_time.strftime('%H:%M:%S'),
+                'Author': '@test_user',
+                'Message_Text': 'رياضة اليوم',
+                'text': 'رياضة اليوم',
+                'id': 1000002,
+                'channel': '@test_channel',
+                'country_code': 'iraq',
+                'Country': 'Iraq',
+                'desc': 'Iraq Arabic trivial keyword'
+            },
+            {
+                'Message_ID': 1000003,
+                'Channel': '@test_channel',
+                'Date': current_time.strftime('%Y-%m-%d'),
+                'Time': current_time.strftime('%H:%M:%S'),
+                'Author': '@test_user',
+                'Message_Text': 'advertisement: buy now!',
+                'text': 'advertisement: buy now!',
+                'id': 1000003,
+                'channel': '@test_channel',
+                'country_code': 'iraq',
+                'Country': 'Iraq',
+                'desc': 'Iraq English exclude keyword'
+            },
+            {
+                'Message_ID': 1000004,
+                'Channel': '@test_channel',
+                'Date': current_time.strftime('%Y-%m-%d'),
+                'Time': current_time.strftime('%H:%M:%S'),
+                'Author': '@test_user',
+                'Message_Text': 'إعلان هام',
+                'text': 'إعلان هام',
+                'id': 1000004,
+                'channel': '@test_channel',
+                'country_code': 'iraq',
+                'Country': 'Iraq',
+                'desc': 'Iraq Arabic exclude keyword'
+            }
+        ]
+
+        for msg in messages:
+            print(f"\n🧪 Testing message: {msg['desc']}")
+            print(f"Message ID: {msg['Message_ID']}")
+            print(f"Message Text: {msg['Message_Text']}")
+            print(f"Date/Time: {msg['Date']} {msg['Time']}")
+            task = process_telegram_message.delay(msg, config)
+            print(f"✅ Task submitted: {task.id}")
+            print(f"📋 Check logs/telegram_tasks.log for processing results")
+            print(f"📋 Check Redis: redis-cli -n 1 get 'processed_msg:@test_channel:{msg['Message_ID']}'")
+        return True
         
     except Exception as e:
         print(f"❌ Error: {e}")

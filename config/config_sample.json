@@ -110,6 +110,73 @@
                "sponsor", "ad", "commercial", "marketing", "promotional"
             ]
          }
+      },
+      "iraq": {
+         "name": "Iraq",
+         "channels": ["@wa3ediq", "@hasklay", "@alssaanetwork", "@ULIQUltraIraq", "@zagrostvnews", "@altaifaalmansoora", "@onenajaf2", "@teamsmediawar_1", "@moiiraqi", "@iraqicts", "@Saedalshuhada313", "@Mahdiasmr1995", "@Alwalaaee", "@Sabren_News1", "@centerkaf", "@SabrenNewss", "@Al_Nojaba", "@ayraqy_313", "@Ansaralqayim313", "@Alwaadalsadeq3", "@alghadeertv", "@shafaaqnews", "@inainaiq", "@iraqi1_news"],
+         "teams_webhook": "your_iraq_teams_webhook_url",
+         "teams_channel_name": "Iraq Telegram Alerts",
+         "sharepoint_config": {
+            "site_name": "ATCSharedFiles",
+            "folder_path": "/Telegram_Feeds/Iraq/",
+            "file_name": "Iraq_Telegram_Feeds.xlsx",
+            "significant_sheet": "Significant",
+            "trivial_sheet": "Trivial"
+         },
+         "message_filtering": {
+            "use_ai_for_message_filtering": true,
+            "significant_keywords": [
+               ["protest", "احتجاج"],
+               ["demonstration", "مظاهرة"],
+               ["march", "مسيرة"],
+               ["gathering", "تجمّع"],
+               ["sit-in", "اعتصام"],
+               ["uprising", "انتفاضة"],
+               ["revolution", "ثورة"],
+               ["went out to protest", "خرجوا للتظاهر"],
+               ["popular protests", "الاحتجاجات الشعبية"],
+               ["peaceful demonstrations", "المظاهرات السلمية"],
+               ["protesters gathering", "تجمع المحتجين"],
+               ["wave of anger", "موجة غضب"],
+               ["clash", "اشتباك"],
+               ["injury", "إصابة"],
+               ["victims", "ضحايا"],
+               ["urgent", "عاجـــــــــــــــل"]
+            ],
+            "trivial_keywords": [
+               ["sports", "رياضة"],
+               ["entertainment", "ترفيه"],
+               ["celebrity", "مشاهير"],
+               ["gossip", "نميمة"],
+               ["fashion", "موضة"],
+               ["food", "طعام"],
+               ["travel", "سفر"],
+               ["lifestyle", "أسلوب الحياة"],
+               ["health tips", "نصائح صحية"],
+               ["recipe", "وصفة"],
+               ["horoscope", "أبراج"],
+               ["quiz", "اختبار"],
+               ["game", "لعبة"],
+               ["showbiz", "عالم الفن"],
+               ["tv show", "برنامج تلفزيوني"],
+               ["movie", "فيلم"],
+               ["concert", "حفلة موسيقية"],
+               ["cooking", "طبخ"]
+            ],
+            "exclude_keywords": [
+               ["advertisement", "إعلان"],
+               ["promo", "ترويج"],
+               ["discount", "خصم"],
+               ["sale", "تخفيضات"],
+               ["buy now", "اشتر الآن"],
+               ["limited time", "لفترة محدودة"],
+               ["sponsor", "راعي"],
+               ["ad", "إعلان"],
+               ["commercial", "تجاري"],
+               ["marketing", "تسويق"],
+               ["promotional", "ترويجي"]
+            ]
+         }
       }
    },
 

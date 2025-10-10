@@ -15,7 +15,7 @@ class OpenAIProcessor:
    apikey = ""
    openai_client = None
    #openai_model = "gpt-4o-mini"                    # You can switch to "gpt-4o" for a smarter AI (but more than x50 the price)
-   openai_model = "gpt-5-mini"                    # You can switch to "gpt-5" for a smarter AI (but x5 the price)
+   openai_model = "gpt-4o-mini"                    # Use gpt-4o-mini which supports max_tokens parameter
    openai_model_embed = ""
    #openai_model = "gpt-3.5-turbo"                 # This can be used in Free Tier
    openai_embed_model = "text-embedding-3-small"   # You can also use 'text-embedding-3-small' for a more accurate vector representation of the articles (3072 vs 1536)
@@ -142,72 +142,92 @@ class OpenAIProcessor:
       try:
          # First, detect language and translate if necessary
          is_english, translated_message, detected_language = self.detectLanguageAndTranslate(message)
-         
+
          # Store translation info for later use
          translation_info = {
             'is_english': is_english,
             'original_language': detected_language,
             'translated_text': translated_message if not is_english else None
          }
-         
-         # Use translated text for analysis (or original if already English)
-         analysis_text = translated_message
-         
+
          # Use country-specific keywords if provided
+         use_ai = True
          if country_config and 'message_filtering' in country_config:
             filtering = country_config['message_filtering']
             significant_keywords = filtering.get('significant_keywords', significant_keywords or [])
             trivial_keywords = filtering.get('trivial_keywords', trivial_keywords or [])
             exclude_keywords = filtering.get('exclude_keywords', exclude_keywords or [])
-         
+            use_ai = filtering.get('use_ai_for_message_filtering', True)
+
          # Set defaults if still None
          if significant_keywords is None:
-            significant_keywords = ["breaking news", "alert", "urgent", "emergency", "crisis"]
+            significant_keywords = [["breaking news", "أخبار عاجلة"], ["alert", "تنبيه"], ["urgent", "عاجل"], ["emergency", "طارئ"], ["crisis", "أزمة"]]
          if trivial_keywords is None:
-            trivial_keywords = ["weather", "sports", "entertainment", "celebrity"]
+            trivial_keywords = [["weather", "طقس"], ["sports", "رياضة"], ["entertainment", "ترفيه"], ["celebrity", "مشاهير"]]
          if exclude_keywords is None:
-            exclude_keywords = ["advertisement", "promo", "discount", "sale"]
-         
-         # First check if message contains exclude keywords (using translated text)
+            exclude_keywords = [["advertisement", "إعلان"], ["promo", "ترويج"], ["discount", "خصم"], ["sale", "تخفيضات"]]
+
+         # Choose which language to use for keyword matching
+         lang_idx = 0 if is_english else 1
+         analysis_text = message if not is_english else translated_message  # Use original for Arabic, translated for English
          analysis_text_lower = analysis_text.lower()
-         for keyword in exclude_keywords:
-            if keyword.lower() in analysis_text_lower:
+
+         # Flatten keywords for matching
+         def get_keywords(keyword_list):
+            return [kw[lang_idx] for kw in keyword_list if len(kw) > lang_idx]
+
+         sig_keywords = get_keywords(significant_keywords)
+         triv_keywords = get_keywords(trivial_keywords)
+         excl_keywords = get_keywords(exclude_keywords)
+
+         # Helper function for whole-word matching
+         import re
+         def matches_whole_word(keyword, text):
+            if not keyword:
+                return False
+            # Use word boundaries to match whole words only
+            pattern = r'\b' + re.escape(keyword.lower()) + r'\b'
+            return bool(re.search(pattern, text.lower()))
+
+         # Exclude check
+         for keyword in excl_keywords:
+            if matches_whole_word(keyword, analysis_text):
                LOGGER.writeLog(f'OpenAIProcessor: Message excluded due to keyword: {keyword}')
                return False, [], "excluded", translation_info
 
-         # Check for significant keywords match
-         matched_significant = []
-         for keyword in significant_keywords:
-            if keyword.lower() in analysis_text_lower:
-               matched_significant.append(keyword)
-         
-         # Check for trivial keywords match
-         matched_trivial = []
-         for keyword in trivial_keywords:
-            if keyword.lower() in analysis_text_lower:
-               matched_trivial.append(keyword)
-         
-         # If both significant and trivial keywords match, use AI to decide
+         # Significant check
+         matched_significant = [kw for kw in sig_keywords if matches_whole_word(kw, analysis_text)]
+         matched_trivial = [kw for kw in triv_keywords if matches_whole_word(kw, analysis_text)]
+
+         # If both significant and trivial keywords match, use AI if enabled
          if matched_significant and matched_trivial:
             LOGGER.writeLog(f'OpenAIProcessor: Mixed keywords found - using AI analysis')
-            is_significant, keywords, method = self._analyzeWithAI(analysis_text, significant_keywords, trivial_keywords, country_config)
-            return is_significant, keywords, method, translation_info
-         
+            if use_ai:
+               is_significant, keywords, method = self._analyzeWithAI(analysis_text, sig_keywords, triv_keywords, country_config)
+               return is_significant, keywords, method, translation_info
+            else:
+               # Default to significant if AI is disabled
+               return True, matched_significant, "keyword_significant", translation_info
+
          # If only significant keywords match, classify as significant
          if matched_significant and not matched_trivial:
             LOGGER.writeLog(f'OpenAIProcessor: Message classified as Significant by keywords: {matched_significant}')
             return True, matched_significant, "keyword_significant", translation_info
-         
+
          # If only trivial keywords match, classify as trivial
          if matched_trivial and not matched_significant:
             LOGGER.writeLog(f'OpenAIProcessor: Message classified as Trivial by keywords: {matched_trivial}')
             return False, matched_trivial, "keyword_trivial", translation_info
-         
-         # No keywords matched, use AI analysis
-         LOGGER.writeLog(f'OpenAIProcessor: No keywords matched - using AI analysis')
-         is_significant, keywords, method = self._analyzeWithAI(analysis_text, significant_keywords, trivial_keywords, country_config)
-         return is_significant, keywords, method, translation_info
-         
+
+         # No keywords matched, use AI if enabled
+         if use_ai:
+            LOGGER.writeLog(f'OpenAIProcessor: No keywords matched - using AI analysis')
+            is_significant, keywords, method = self._analyzeWithAI(analysis_text, sig_keywords, triv_keywords, country_config)
+            return is_significant, keywords, method, translation_info
+         else:
+            LOGGER.writeLog(f'OpenAIProcessor: No keywords matched - AI disabled, defaulting to Trivial')
+            return False, [], "no_match_trivial", translation_info
+
       except Exception as e:
          LOGGER.writeLog(f'OpenAIProcessor: isMessageSignificant - Exception: {e}')
          return False, [], "error", {'is_english': True, 'original_language': 'Unknown', 'translated_text': None}
