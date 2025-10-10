@@ -65,7 +65,7 @@ Queue New Messages → AI Analysis → Teams Alert (if significant) → SharePoi
 - `scripts/deploy_celery.sh` - Updated worker configurations to include new queue
 
 ### New Files
-- `scripts/test_message_fetch.py` - Test script to manually trigger message fetching
+- `tests/test_message_fetch.py` - Test script to manually trigger message fetching
 
 ## Configuration
 
@@ -122,7 +122,7 @@ tail -f logs/celery_main_processor.log
 To test the new functionality manually:
 
 ```bash
-python3 scripts/test_message_fetch.py
+python3 tests/test_message_fetch.py
 ```
 
 ## Expected Log Output

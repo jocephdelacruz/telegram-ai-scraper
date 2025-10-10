@@ -4,6 +4,7 @@ An intelligent, high-performance Telegram message scraper that uses OpenAI to an
 
 ## Features
 
+- **Periodic Message Fetching**: Automatically checks for new messages every 3 minutes (configurable) with intelligent age filtering
 - **Real-time Monitoring**: Continuously monitors specified Telegram channels for new messages using asyncio
 - **Distributed Processing**: Uses Celery workers for parallel processing of AI analysis, notifications, and data storage
 - **Intelligent Message Filtering**: Country-specific keyword filtering with AI fallback for optimal performance and accuracy
@@ -62,10 +63,11 @@ Edit `config.json` with your credentials and preferences:
 
 - `TEAMS_SENDER_NAME`: System identifier shown in Teams notifications (e.g., "Aldebaran Scraper")
 - `OPEN_AI_KEY`: Your OpenAI API key
-- `TELEGRAM_CONFIG`: Telegram API credentials and fetch configuration
+- `TELEGRAM_CONFIG`: Telegram API credentials and periodic fetch configuration
   - `FETCH_INTERVAL_SECONDS`: How often to check for new messages (default: 180 = 3 minutes)
   - `FETCH_MESSAGE_LIMIT`: Max messages per channel per fetch (default: 10)
-  - Age limit automatically calculated as `FETCH_INTERVAL_SECONDS + 30 seconds`
+  - Age limit automatically calculated as `FETCH_INTERVAL_SECONDS + 30 seconds` to avoid duplicates
+  - **Duplicate Detection**: Redis-based tracking prevents processing the same message twice
 - `COUNTRIES`: Country-specific configurations with channels, Teams webhooks, and SharePoint settings
 - `MESSAGE_FILTERING`: Keywords that determine message significance
 - `MS_SHAREPOINT_ACCESS`: Base SharePoint credentials
@@ -168,12 +170,16 @@ chmod +x scripts/quick_start.sh
 | `tests/validate_telegram_config.py` | **Telegram credential validator** | Before authentication, credential issues | Network tests, credential validation, interactive updates |
 | `tests/test_translation.py` | Translation system testing | Verify OpenAI integration | Test language detection and translation |
 | `tests/test_components.py` | Component testing | Development and debugging | Individual component validation |
+| `tests/test_message_fetch.py` | **Periodic message fetching test** | Verify 3-minute fetch intervals | Tests new periodic fetching with age filtering |
+| `tests/test_async_fix.py` | Async event loop testing | Debug asyncio/Celery conflicts | Tests lazy client initialization |
+| `tests/debug_message_ages.py` | Message age debugging | Debug why no new messages processed | Analyzes message timestamps vs age cutoff |
 
 **Most Common Usage:**
 - **Verify setup:** `./scripts/verify_setup.sh` (recommended first step)
 - **First time:** `./scripts/setup.sh` (includes config + Telegram auth)
 - **After restart:** `./scripts/quick_start.sh` (auto-detects auth if needed)
 - **Check status:** `./scripts/status.sh`
+- **Test message fetch:** `python3 tests/test_message_fetch.py` (verify periodic fetching works)
 
 ### Manual Deployment
 
@@ -240,12 +246,24 @@ The system uses a **hybrid asyncio + Celery architecture** for optimal performan
 - **Celery**: Processes heavy tasks (AI analysis, API calls) in distributed workers
 - **Redis**: Message broker for task queues and result storage
 
+### Recent Technical Improvements
+
+- **Periodic Fetching**: Celery beat scheduler automatically fetches new messages every 3 minutes
+- **Async Event Loop Fixes**: Resolved asyncio/Celery conflicts with lazy TelegramClient initialization  
+- **Duplicate Prevention**: Redis-based tracking ensures messages are never processed twice
+- **Absolute Path Resolution**: All file operations use absolute paths for multi-worker safety
+- **Intelligent Age Filtering**: Automatically calculates age cutoffs to prevent stale message processing
+- **Enhanced Error Handling**: Comprehensive retry mechanisms and graceful failure recovery
+- **Centralized Test Suite**: All testing utilities organized in dedicated `tests/` directory
+
 ### Message Processing Flow
 
-1. **Message Ingestion**: Main process (asyncio) listens to Telegram channels in real-time
-2. **Country Detection**: Determines which country configuration to use based on source channel
-3. **Task Queuing**: New messages are immediately queued as Celery tasks (non-blocking)  
-4. **Distributed Processing**: Multiple Celery workers process tasks in parallel:
+1. **Periodic Message Ingestion**: Celery beat scheduler triggers message fetch every 3 minutes from all channels
+2. **Duplicate Detection**: Redis checks prevent processing messages already handled in the last 24 hours
+3. **Age Filtering**: Only processes messages newer than the configured age limit (fetch_interval + 30s buffer)
+4. **Country Detection**: Determines which country configuration to use based on source channel
+5. **Task Queuing**: New messages are immediately queued as Celery tasks (non-blocking)  
+6. **Distributed Processing**: Multiple Celery workers process tasks in parallel:
    - **Language Detection**: Automatic detection of message language with cost-effective heuristics
    - **Translation**: Non-English messages automatically translated to English for analysis
    - **Smart Filtering**: Country-specific keyword filtering on translated text for faster classification
@@ -254,8 +272,8 @@ The system uses a **hybrid asyncio + Celery architecture** for optimal performan
    - **Smart Notifications**: Only significant messages trigger Teams alerts (showing both original and translated text)
    - **Country Routing**: Messages routed to country-specific Teams/SharePoint
    - **Backup**: Country-specific CSV storage (separate files for significant/trivial) with translation info
-5. **Error Handling**: Failed tasks automatically retry with exponential backoff
-6. **Monitoring**: All activities logged with classification methods and task IDs### Queue Architecture
+7. **Error Handling**: Failed tasks automatically retry with exponential backoff
+8. **Monitoring**: All activities logged with classification methods and task IDs### Queue Architecture
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
 │  Telegram API   │───▶│   Main Process   │───▶│  Redis Queues   │
@@ -637,7 +655,17 @@ This project is for internal use only. All rights reserved.
 
 ## Changelog
 
-### Version 2.0.0 (Current)
+### Version 2.1.0 (Current)
+- **Periodic Message Fetching**: Automated 3-minute interval fetching with Celery beat scheduler
+- **Async Event Loop Fixes**: Resolved asyncio/Celery conflicts with lazy TelegramClient initialization
+- **Redis Duplicate Detection**: Prevents processing the same message multiple times (24-hour expiration)
+- **Intelligent Age Filtering**: Automatic age cutoff calculation (fetch_interval + 30s buffer)
+- **Absolute Path Resolution**: All file operations use absolute paths for multi-worker environment safety
+- **Enhanced Error Handling**: Comprehensive async-safe error handling and retry mechanisms
+- **Centralized Test Suite**: Reorganized all test utilities into dedicated `tests/` directory
+- **Updated Documentation**: Comprehensive guides reflecting all recent technical improvements
+
+### Version 2.0.0
 - **Celery Integration**: Distributed task processing with Redis
 - **Hybrid Architecture**: Asyncio + Celery for optimal performance
 - **Parallel Processing**: Multiple workers for AI analysis, notifications, and storage
