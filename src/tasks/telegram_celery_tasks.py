@@ -19,7 +19,10 @@ from datetime import datetime
 celery = Celery('telegram_scraper')
 celery.config_from_object('src.tasks.celery_config')
 
-LOGGER = lh.LogHandling("../../logs/telegram_tasks.log", "Asia/Manila")
+# Use absolute path for logging to avoid path resolution issues in Celery workers
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+TELEGRAM_TASKS_LOG = os.path.join(PROJECT_ROOT, "logs", "telegram_tasks.log")
+LOGGER = lh.LogHandling(TELEGRAM_TASKS_LOG, "Asia/Manila")
 
 
 def run_async_in_celery(coro, timeout=300):
@@ -146,6 +149,19 @@ def process_telegram_message(self, message_data, config):
         # Always save to local backup
         csv_task = save_to_csv_backup.delay(message_data, config)
         message_data['csv_task_id'] = csv_task.id
+        
+        # Mark message as processed in Redis AFTER successful processing
+        try:
+            import redis
+            redis_client = redis.Redis(host='localhost', port=6379, db=1)
+            channel = message_data.get('channel', message_data.get('Channel', 'unknown'))
+            duplicate_key = f"processed_msg:{channel}:{message_id}"
+            # Set expiration to 24 hours (longer than fetch interval to prevent reprocessing)
+            redis_client.setex(duplicate_key, 86400, "1")  # 24 hours = 86400 seconds
+            LOGGER.writeLog(f"Message {message_id} marked as processed in Redis")
+        except Exception as redis_error:
+            LOGGER.writeLog(f"Warning: Could not mark message {message_id} as processed in Redis: {redis_error}")
+            # Don't fail the task if Redis marking fails
         
         LOGGER.writeLog(f"Message {message_id} processing completed - {message_data['AI_Category']}")
         
@@ -299,8 +315,8 @@ def save_to_csv_backup(self, message_data, config):
         
         LOGGER.writeLog(f"Saving {category} message {message_id} to CSV backup ({country_code})")
         
-        # Create country-specific CSV files
-        data_dir = "../../data"
+        # Create country-specific CSV files using absolute path
+        data_dir = os.path.join(PROJECT_ROOT, "data")
         os.makedirs(data_dir, exist_ok=True)
         
         # Separate files for significant and trivial messages
@@ -482,11 +498,10 @@ async def fetch_messages_async(telegram_scraper, all_channels, config, cutoff_ti
                                 
                                 if redis_client.exists(duplicate_key):
                                     skipped_messages += 1
-                                    LOGGER.writeLog(f"Skipping duplicate message from {channel} (ID: {message_id})")
+                                    LOGGER.writeLog(f"Skipping duplicate message from {channel} (ID: {message_id}) - already processed")
                                     continue
                                 
-                                # Mark message as processed (expires after 2 * fetch_interval to save memory)
-                                redis_client.setex(duplicate_key, fetch_interval_seconds * 2, "1")
+                                # DON'T mark as processed yet - wait until after successful AI processing
                                 
                             except Exception as redis_error:
                                 LOGGER.writeLog(f"Redis duplicate check failed, processing message anyway: {redis_error}")
@@ -505,7 +520,8 @@ async def fetch_messages_async(telegram_scraper, all_channels, config, cutoff_ti
                                 # Skip messages that are too old
                                 if message_datetime < cutoff_time:
                                     skipped_messages += 1
-                                    LOGGER.writeLog(f"Skipping old message from {channel} (date: {message_datetime_str}, cutoff: {cutoff_time.strftime('%Y-%m-%d %H:%M:%S')})")
+                                    age_diff = cutoff_time - message_datetime
+                                    LOGGER.writeLog(f"Skipping old message from {channel} (ID: {message_id}, age: {age_diff}, too old by {age_diff})")
                                     continue
                                     
                             except ValueError as e:
@@ -526,12 +542,13 @@ async def fetch_messages_async(telegram_scraper, all_channels, config, cutoff_ti
                         message_date_info = f"({message_date_str} {message_time_str})" if message_date_str and message_time_str else ""
                         
                         if message_preview:
-                            LOGGER.writeLog(f"Processing NEW message from {channel}: '{message_preview}...' " + 
-                                          f"(ID: {message_id}) {message_date_info}")
+                            LOGGER.writeLog(f"✅ QUEUEING message from {channel}: '{message_preview}...' " + 
+                                          f"(ID: {message_id}) {message_date_info} - PASSES all filters")
                         
                         # Queue message for processing (async, non-blocking)
                         task = process_telegram_message.delay(message_data, config)
                         total_messages += 1
+                        LOGGER.writeLog(f"Task {task.id} queued for message {message_id} from {channel}")
                         
                         # Small delay to avoid overwhelming the system
                         await asyncio.sleep(0.1)

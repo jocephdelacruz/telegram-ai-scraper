@@ -75,7 +75,10 @@ task_reject_on_worker_lost = True
 worker_disable_rate_limits = False
 
 # Beat scheduler settings (for periodic tasks)
-beat_schedule_filename = '../../logs/celerybeat-schedule'
+# Use absolute path to avoid path resolution issues in different execution contexts
+import os
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+beat_schedule_filename = os.path.join(PROJECT_ROOT, "logs", "celerybeat-schedule")
 
 # Redis connection settings
 broker_connection_retry_on_startup = True
