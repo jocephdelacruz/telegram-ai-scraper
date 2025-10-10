@@ -160,20 +160,29 @@ class TelegramScraper:
                     
                     # Apply age filtering if cutoff_time provided
                     if cutoff_time:
-                        message_date_str = message_data.get('Date', '')
-                        message_time_str = message_data.get('Time', '')
+                        # Use the stored UTC datetime for accurate comparison
+                        message_datetime_utc = message_data.get('Datetime_UTC')
                         
-                        if message_date_str and message_time_str:
+                        if message_datetime_utc:
                             try:
-                                message_datetime_str = f"{message_date_str} {message_time_str}"
-                                message_datetime = datetime.strptime(message_datetime_str, '%Y-%m-%d %H:%M:%S')
+                                # Both cutoff_time and message_datetime_utc should now be in UTC
+                                # Ensure both have timezone info for proper comparison
+                                from datetime import timezone
                                 
-                                if message_datetime < cutoff_time:
+                                # Ensure message datetime has timezone info
+                                if message_datetime_utc.tzinfo is None:
+                                    message_datetime_utc = message_datetime_utc.replace(tzinfo=timezone.utc)
+                                
+                                # Ensure cutoff time has timezone info  
+                                if cutoff_time.tzinfo is None:
+                                    cutoff_time = cutoff_time.replace(tzinfo=timezone.utc)
+                                
+                                if message_datetime_utc < cutoff_time:
                                     old_messages += 1
                                     continue  # Skip old messages, don't log or add to results
-                            except ValueError as e:
-                                LOGGER.writeLog(f"Could not parse message date/time from {channel_username}: {e}")
-                                # If we can't parse the date, include the message
+                            except Exception as e:
+                                LOGGER.writeLog(f"Could not process message datetime from {channel_username}: {e}")
+                                # If we can't process the datetime, include the message to be safe
                     
                     # Message passed all filters - add to results
                     messages.append(message_data)
@@ -231,6 +240,7 @@ class TelegramScraper:
                 'Channel': channel_username,
                 'Date': message.date.strftime('%Y-%m-%d'),
                 'Time': message.date.strftime('%H:%M:%S'),
+                'Datetime_UTC': message.date,  # Store the original UTC datetime for accurate comparison
                 'Author': '',
                 'Message_Text': message.text or '',
                 'AI_Category': '',

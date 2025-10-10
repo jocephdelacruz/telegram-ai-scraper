@@ -396,10 +396,10 @@ def fetch_new_messages_from_all_channels(self):
         
         LOGGER.writeLog(f"Using fetch limit: {message_limit}, fetch interval: {fetch_interval_seconds}s, age limit: {age_limit_seconds}s ({age_limit_minutes:.1f} minutes)")
         
-        # Calculate cutoff time for message age filtering
-        from datetime import timedelta
-        cutoff_time = datetime.now() - timedelta(seconds=age_limit_seconds)
-        LOGGER.writeLog(f"Only processing messages newer than: {cutoff_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        # Calculate cutoff time for message age filtering (use UTC to match Telegram message timestamps)
+        from datetime import timedelta, timezone
+        cutoff_time = datetime.now(timezone.utc) - timedelta(seconds=age_limit_seconds)
+        LOGGER.writeLog(f"Only processing messages newer than: {cutoff_time.strftime('%Y-%m-%d %H:%M:%S')} UTC")
         
         # Get all channels from all countries
         all_channels = []
