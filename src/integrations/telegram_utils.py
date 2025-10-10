@@ -31,7 +31,9 @@ class TelegramScraper:
             self.api_hash = api_hash
             self.phone_number = phone_number
             self.session_file = session_file
-            self.client = TelegramClient(session_file, api_id, api_hash)
+            # Don't create TelegramClient in __init__ to avoid event loop issues
+            # Create it lazily when needed in async methods
+            self.client = None
             self.monitored_channels = []
             self.message_handler = None
             LOGGER.writeLog("TelegramScraper initialized successfully")
@@ -39,11 +41,25 @@ class TelegramScraper:
             LOGGER.writeLog(f"TelegramScraper initialization failed: {e}")
             raise
 
+    def _ensure_client(self):
+        """Ensure the Telegram client is created (lazy initialization)"""
+        if self.client is None:
+            try:
+                self.client = TelegramClient(self.session_file, self.api_id, self.api_hash)
+                LOGGER.writeLog("TelegramClient created successfully")
+            except Exception as e:
+                LOGGER.writeLog(f"Failed to create TelegramClient: {e}")
+                raise
+        return self.client
+
     async def start_client(self):
         """Start the Telegram client and authenticate if needed"""
         try:
+            # Ensure client is created
+            client = self._ensure_client()
+            
             # More explicit authentication with better error handling
-            await self.client.start(
+            await client.start(
                 phone=lambda: self.phone_number,
                 code_callback=self._code_callback,
                 password=self._password_callback
@@ -83,15 +99,17 @@ class TelegramScraper:
     async def stop_client(self):
         """Stop the Telegram client"""
         try:
-            await self.client.disconnect()
-            LOGGER.writeLog("Telegram client stopped successfully")
+            if self.client:
+                await self.client.disconnect()
+                LOGGER.writeLog("Telegram client stopped successfully")
         except Exception as e:
             LOGGER.writeLog(f"Error stopping Telegram client: {e}")
 
     async def get_channel_entity(self, channel_username):
         """Get channel entity by username"""
         try:
-            entity = await self.client.get_entity(channel_username)
+            client = self._ensure_client()
+            entity = await client.get_entity(channel_username)
             LOGGER.writeLog(f"Successfully retrieved entity for channel: {channel_username}")
             return entity
         except Exception as e:
@@ -114,13 +132,20 @@ class TelegramScraper:
             if not entity:
                 return []
 
+            client = self._ensure_client()
             messages = []
-            async for message in self.client.iter_messages(entity, limit=limit):
+            message_count = 0
+            async for message in client.iter_messages(entity, limit=limit):
                 message_data = await self.parse_message(message, channel_username)
                 if message_data:
                     messages.append(message_data)
+                    # Log message preview for visibility
+                    message_preview = (message_data.get('Message_Text', '') or '')[:20].replace('\n', ' ').strip()
+                    if message_preview:
+                        LOGGER.writeLog(f"Found message from {channel_username}: '{message_preview}...' (ID: {message_data.get('Message_ID', 'N/A')})")
+                message_count += 1
 
-            LOGGER.writeLog(f"Retrieved {len(messages)} messages from {channel_username}")
+            LOGGER.writeLog(f"Retrieved {len(messages)} valid messages from {channel_username} (checked {message_count} total)")
             return messages
         except Exception as e:
             LOGGER.writeLog(f"Failed to get messages from {channel_username}: {e}")
@@ -228,7 +253,8 @@ class TelegramScraper:
                 return
 
             # Set up event handler for new messages
-            @self.client.on(events.NewMessage(chats=channel_entities))
+            client = self._ensure_client()
+            @client.on(events.NewMessage(chats=channel_entities))
             async def handle_new_message(event):
                 try:
                     channel_username = None
@@ -255,7 +281,7 @@ class TelegramScraper:
             LOGGER.writeLog(f"Started monitoring {len(channel_entities)} channels")
             
             # Keep the client running
-            await self.client.run_until_disconnected()
+            await client.run_until_disconnected()
             
         except Exception as e:
             LOGGER.writeLog(f"Error starting channel monitoring: {e}")
@@ -300,8 +326,9 @@ class TelegramScraper:
             if not entity:
                 return []
 
+            client = self._ensure_client()
             messages = []
-            async for message in self.client.iter_messages(entity, search=query, limit=limit):
+            async for message in client.iter_messages(entity, search=query, limit=limit):
                 message_data = await self.parse_message(message, channel_username)
                 if message_data:
                     messages.append(message_data)

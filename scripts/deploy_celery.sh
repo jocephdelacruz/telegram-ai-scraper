@@ -375,15 +375,15 @@ start_all_workers() {
     case "$WORKER_MODE" in
         consolidated)
             # Single worker handles all queues
-            start_worker "all" "telegram_processing,notifications,sharepoint,backup,maintenance" $ALL_WORKERS || return 1
+            start_worker "all" "telegram_processing,telegram_fetch,notifications,sharepoint,backup,maintenance,monitoring" $ALL_WORKERS || return 1
             ;;
         split)
-            start_worker "main_processor" "telegram_processing" $MAIN_PROCESSOR_WORKERS || return 1
+            start_worker "main_processor" "telegram_processing,telegram_fetch" $MAIN_PROCESSOR_WORKERS || return 1
             start_worker "data_services" "sharepoint,backup,notifications" $DATA_SERVICES_WORKERS || return 1
             start_worker "maintenance" "maintenance,monitoring" $MAINTENANCE_SPLIT_WORKERS || return 1
             ;;
         original)
-            start_worker "main_processor" "telegram_processing" $MAIN_PROCESSOR_WORKERS || return 1
+            start_worker "main_processor" "telegram_processing,telegram_fetch" $MAIN_PROCESSOR_WORKERS || return 1
             start_worker "notifications" "notifications" $NOTIFICATIONS_WORKERS || return 1
             start_worker "sharepoint" "sharepoint" $SHAREPOINT_WORKERS || return 1
             start_worker "backup" "backup" $BACKUP_WORKERS || return 1
@@ -446,15 +446,15 @@ case "${1:-deploy}" in
                 case "$WORKER_MODE" in
                     consolidated)
                         echo "- Consolidated Worker: $ALL_WORKERS worker ($ALL_WORKERS concurrency)"
-                        echo "  Queues: telegram_processing,notifications,sharepoint,backup,maintenance"
+                        echo "  Queues: telegram_processing,telegram_fetch,notifications,sharepoint,backup,maintenance,monitoring"
                         ;;
                     split)
-                        echo "- Main Processor: $MAIN_PROCESSOR_WORKERS workers (telegram_processing)"
+                        echo "- Main Processor: $MAIN_PROCESSOR_WORKERS workers (telegram_processing,telegram_fetch)"
                         echo "- Data Services Worker: $DATA_SERVICES_WORKERS worker (sharepoint,backup,notifications)"
                         echo "- Maintenance Worker: $MAINTENANCE_SPLIT_WORKERS worker (maintenance,monitoring)"
                         ;;
                     original)
-                        echo "- Telegram Processing Workers: $MAIN_PROCESSOR_WORKERS workers"
+                        echo "- Telegram Processing/Fetch Workers: $MAIN_PROCESSOR_WORKERS workers"
                         echo "- Notification Workers: $NOTIFICATIONS_WORKERS workers"
                         echo "- SharePoint Workers: $SHAREPOINT_WORKERS workers"
                         echo "- Backup Workers: $BACKUP_WORKERS worker"

@@ -62,7 +62,10 @@ Edit `config.json` with your credentials and preferences:
 
 - `TEAMS_SENDER_NAME`: System identifier shown in Teams notifications (e.g., "Aldebaran Scraper")
 - `OPEN_AI_KEY`: Your OpenAI API key
-- `TELEGRAM_CONFIG`: Telegram API credentials
+- `TELEGRAM_CONFIG`: Telegram API credentials and fetch configuration
+  - `FETCH_INTERVAL_SECONDS`: How often to check for new messages (default: 180 = 3 minutes)
+  - `FETCH_MESSAGE_LIMIT`: Max messages per channel per fetch (default: 10)
+  - Age limit automatically calculated as `FETCH_INTERVAL_SECONDS + 30 seconds`
 - `COUNTRIES`: Country-specific configurations with channels, Teams webhooks, and SharePoint settings
 - `MESSAGE_FILTERING`: Keywords that determine message significance
 - `MS_SHAREPOINT_ACCESS`: Base SharePoint credentials
@@ -81,6 +84,7 @@ Edit `config.json` with your credentials and preferences:
 ### Basic Configuration Structure
 
 ```json
+```json
 {
    "TEAMS_SENDER_NAME": "Aldebaran Scraper",
    "OPEN_AI_KEY": "your_openai_api_key",
@@ -89,26 +93,10 @@ Edit `config.json` with your credentials and preferences:
       "API_ID": "your_telegram_api_id",
       "API_HASH": "your_telegram_api_hash",
       "PHONE_NUMBER": "your_phone_number",
-      "SESSION_FILE": "telegram_session.session"
+      "SESSION_FILE": "telegram_session.session",
+      "FETCH_INTERVAL_SECONDS": 180,
+      "FETCH_MESSAGE_LIMIT": 10
    },
-   
-   "COUNTRIES": {
-      "country_code": {
-         "name": "Country Name",
-         "channels": ["@channel1", "@channel2"],
-         "teams_webhook": "teams_webhook_url",
-         "sharepoint_config": { ... },
-         "message_filtering": {
-            "significant_keywords": ["urgent", "breaking"],
-            "trivial_keywords": ["sports", "weather"],
-            "exclude_keywords": ["advertisement", "promo"]
-         }
-      }
-   },
-   
-   "MS_SHAREPOINT_ACCESS": { ... },
-   "TELEGRAM_EXCEL_FIELDS": [ ... ]
-}
 ```
 
 See [config_sample.json](config/config_sample.json) for complete configuration examples.

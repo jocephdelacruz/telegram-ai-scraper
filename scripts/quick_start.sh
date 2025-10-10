@@ -5,7 +5,12 @@
 
 # Colors for output
 RED='\033[0;31m'
-GREEN='\033[0;32m'
+GREEN='\0echo "🎯 Next Actions:"
+echo "• The system now automatically fetches new messages every 3 minutes!"
+echo "• Only processes messages newer than 5 minutes (configurable in config.json)"
+echo "• View telegram logs: tail -f logs/telegram.log"
+echo "• View worker logs: tail -f logs/celery_*.log"
+echo "• Monitor resources: ./scripts/monitor_resources.sh"32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
@@ -168,8 +173,8 @@ echo "• Flower Monitoring: http://$(curl -s ifconfig.me 2>/dev/null || echo 'Y
 echo "• Flower Local: http://localhost:5555"
 echo ""
 echo "🎯 Next Actions:"
-echo "• Start monitoring: ./scripts/run_app.sh monitor"
-echo "• View main logs: tail -f logs/main.log"
+echo "• The system now automatically fetches new messages every 3 minutes!"
+echo "• View telegram logs: tail -f logs/telegram.log"
 echo "• View worker logs: tail -f logs/celery_*.log"
 echo "• Monitor resources: ./scripts/monitor_resources.sh"
 echo ""
@@ -178,8 +183,8 @@ echo "• Check status: ./scripts/deploy_celery.sh status"
 echo "• Restart services: ./scripts/deploy_celery.sh restart"
 echo "• Stop services: ./scripts/deploy_celery.sh stop"
 echo "• Test connections: ./scripts/run_app.sh test"
-echo "• Start monitoring: ./scripts/run_app.sh monitor"
-echo "• Stop monitoring: pkill -f 'python3 src/core/main.py --mode monitor'"
+echo "• Test message fetch: python3 scripts/test_message_fetch.py"
+echo "• Optional real-time monitoring: ./scripts/run_app.sh monitor"
 echo ""
 echo "📁 Important Directories:"
 echo "• Configuration: config/config.json"

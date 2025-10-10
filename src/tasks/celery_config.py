@@ -7,6 +7,7 @@ result_backend = 'redis://localhost:6379/0'
 # Task routing - different queues for different types of work
 task_routes = {
     'src.tasks.telegram_celery_tasks.process_telegram_message': {'queue': 'telegram_processing'},
+    'src.tasks.telegram_celery_tasks.fetch_new_messages_from_all_channels': {'queue': 'telegram_fetch'},
     'src.tasks.telegram_celery_tasks.send_teams_notification': {'queue': 'notifications'},
     'src.tasks.telegram_celery_tasks.save_to_sharepoint': {'queue': 'sharepoint'},
     'src.tasks.telegram_celery_tasks.save_to_csv_backup': {'queue': 'backup'},
@@ -46,6 +47,11 @@ task_annotations = {
         'rate_limit': '50/m',   # AI processing is slower
         'time_limit': 180,      # 3 minutes for AI analysis
         'soft_time_limit': 150,
+    },
+    'src.tasks.telegram_celery_tasks.fetch_new_messages_from_all_channels': {
+        'rate_limit': '20/h',   # Max 20 times per hour (every 3 minutes)
+        'time_limit': 600,      # 10 minutes for fetching from all channels
+        'soft_time_limit': 540,
     },
     'src.tasks.telegram_celery_tasks.send_teams_notification': {
         'rate_limit': '200/m',  # Notifications can be faster
@@ -106,6 +112,11 @@ task_queues = {
         'exchange': 'telegram_scraper',
         'exchange_type': 'direct',
         'routing_key': 'telegram_processing',
+    },
+    'telegram_fetch': {
+        'exchange': 'telegram_scraper',
+        'exchange_type': 'direct',
+        'routing_key': 'telegram_fetch',
     },
     'notifications': {
         'exchange': 'telegram_scraper',
