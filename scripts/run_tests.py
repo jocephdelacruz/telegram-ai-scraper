@@ -302,6 +302,34 @@ class TestRunner:
             self.results['failed'] += 1
             self.results['errors'].append(f"Translation Tests: {details}")
             
+        # Test message processing
+        status, details = self.run_python_test("test_message_processing.py")
+        self.print_result("Message Processing", status, details if status != 'PASS' else None)
+        
+        if status == 'PASS':
+            self.results['passed'] += 1
+        elif status == 'SKIP':
+            self.results['skipped'] += 1
+        else:
+            self.results['failed'] += 1
+            self.results['errors'].append(f"Message Processing: {details}")
+            
+    def test_csv_storage(self):
+        """Test CSV message storage functionality"""
+        self.print_section("CSV Storage Tests")
+        
+        # Test comprehensive CSV message storage
+        status, details = self.run_python_test("test_csv_message_storage.py", timeout=90)
+        self.print_result("CSV Message Storage", status, details if status != 'PASS' else None)
+        
+        if status == 'PASS':
+            self.results['passed'] += 1
+        elif status == 'SKIP':
+            self.results['skipped'] += 1
+        else:
+            self.results['failed'] += 1
+            self.results['errors'].append(f"CSV Message Storage: {details}")
+            
     def test_api_connections(self):
         """Test API connections"""
         self.print_section("API Connection Tests")
@@ -495,6 +523,7 @@ class TestRunner:
         self.test_telegram_session_manager()
         self.test_language_detection()
         self.test_message_processing()
+        self.test_csv_storage()
         self.test_celery_tasks()
         
         if not quick:
@@ -516,6 +545,7 @@ def main():
     parser.add_argument("--session", action="store_true", help="Run only Telegram session manager tests")
     parser.add_argument("--language", action="store_true", help="Run only language detection tests")
     parser.add_argument("--processing", action="store_true", help="Run only message processing tests")
+    parser.add_argument("--csv", action="store_true", help="Run only CSV storage tests")
     
     args = parser.parse_args()
     
@@ -535,6 +565,9 @@ def main():
         return runner.generate_report()
     elif args.processing:
         runner.test_message_processing()
+        return runner.generate_report()
+    elif args.csv:
+        runner.test_csv_storage()
         return runner.generate_report()
     else:
         return runner.run_all(quick=args.quick)

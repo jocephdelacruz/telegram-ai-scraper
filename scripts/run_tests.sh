@@ -11,6 +11,7 @@
 #   ./scripts/run_tests.sh --session          # Run Telegram session manager tests only
 #   ./scripts/run_tests.sh --language         # Run language detection tests only
 #   ./scripts/run_tests.sh --processing       # Run message processing tests only
+#   ./scripts/run_tests.sh --csv              # Run CSV storage tests only
 
 # Colors for output
 RED='\033[0;31m'

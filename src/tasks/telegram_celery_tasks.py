@@ -259,8 +259,12 @@ def save_to_sharepoint(self, message_data, config, country_code):
             full_file_path
         )
         
-        if not sp_processor.isConnectedToSharepointFile:
-            raise Exception("Failed to connect to SharePoint file")
+        if not sp_processor:
+            raise Exception("Failed to initialize SharePoint processor")
+            
+        # Check if we have valid session ID to confirm connection
+        if not hasattr(sp_processor, 'sessionID') or not sp_processor.sessionID:
+            raise Exception("Failed to establish SharePoint session")
         
         # Determine which sheet to use based on message significance
         if is_significant:
@@ -268,9 +272,15 @@ def save_to_sharepoint(self, message_data, config, country_code):
         else:
             sheet_name = sharepoint_config.get('trivial_sheet', 'Trivial')
         
-        # Prepare data for SharePoint
+        # Prepare data for SharePoint - filter to only include expected fields
         excel_fields = config.get('TELEGRAM_EXCEL_FIELDS', [])
-        sp_data = [message_data]  # Single message
+        
+        # Filter message data to only include fields expected in SharePoint
+        filtered_message_data = {}
+        for field in excel_fields:
+            filtered_message_data[field] = message_data.get(field, '')
+        
+        sp_data = [filtered_message_data]  # Single filtered message
         sp_format_data = sp_processor.convertDictToSPFormat(sp_data, excel_fields)
         
         # Find next available row and save
@@ -331,7 +341,16 @@ def save_to_csv_backup(self, message_data, config):
         file_handler = fh.FileHandling(csv_file)
         excel_fields = config.get('TELEGRAM_EXCEL_FIELDS', [])
         
-        success = file_handler.append_to_csv(message_data, excel_fields)
+        # Filter message data to only include fields that are expected in CSV
+        # This prevents "dict contains fields not in fieldnames" errors
+        filtered_message_data = {}
+        for field in excel_fields:
+            # Use the field value if available, otherwise use empty string
+            filtered_message_data[field] = message_data.get(field, '')
+        
+        LOGGER.writeLog(f"CSV write - Original fields: {len(message_data)}, Filtered fields: {len(filtered_message_data)}")
+        
+        success = file_handler.append_to_csv(filtered_message_data, excel_fields)
         
         if success:
             LOGGER.writeLog(f"{category} message {message_id} saved to CSV backup successfully ({country_code})")
