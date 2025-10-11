@@ -101,8 +101,10 @@ def test_translation():
                 print(f"Detected Language: {detected_language}")
                 print(f"Is English: {is_english}")
                 print(f"Translated: {translated_text}")
-                # Test significance analysis with translation and country config
-                is_significant, keywords, method, translation_info = processor.isMessageSignificant(
+                # Test significance analysis with country config using MessageProcessor
+                from src.core.message_processor import MessageProcessor
+                message_processor = MessageProcessor(openai_processor=processor)
+                is_significant, keywords, method, translation_info = message_processor.isMessageSignificant(
                     test['text'], country_config=test.get('country_config'))
                 print(f"Significance: {'Significant' if is_significant else 'Trivial'}")
                 print(f"Method: {method}")
@@ -118,13 +120,13 @@ def test_translation():
             iraq_config_ai_off['message_filtering'] = dict(iraq_config_ai_off['message_filtering'])
             iraq_config_ai_off['message_filtering']['use_ai_for_message_filtering'] = False
             ambiguous_text = "This message does not match any keyword but is about a protest in the city."
-            is_significant, keywords, method, translation_info = processor.isMessageSignificant(
+            is_significant, keywords, method, translation_info = message_processor.isMessageSignificant(
                 ambiguous_text, country_config=iraq_config_ai_off)
             print(f"AI Filtering OFF: Significance: {'Significant' if is_significant else 'Trivial'}, Method: {method}")
             iraq_config_ai_on = dict(iraq_config)
             iraq_config_ai_on['message_filtering'] = dict(iraq_config_ai_on['message_filtering'])
             iraq_config_ai_on['message_filtering']['use_ai_for_message_filtering'] = True
-            is_significant, keywords, method, translation_info = processor.isMessageSignificant(
+            is_significant, keywords, method, translation_info = message_processor.isMessageSignificant(
                 ambiguous_text, country_config=iraq_config_ai_on)
             print(f"AI Filtering ON: Significance: {'Significant' if is_significant else 'Trivial'}, Method: {method}")
             print("-" * 60)

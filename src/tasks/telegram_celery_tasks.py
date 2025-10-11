@@ -79,11 +79,13 @@ def process_telegram_message(self, message_data, config):
         
         LOGGER.writeLog(f"Processing message {message_id} from {channel} ({country_code})")
         
-        # AI Analysis with country-specific filtering (includes translation if needed)
+        # Message processing with optimized language detection and keyword matching
+        from src.core.message_processor import MessageProcessor
         openai_processor = OpenAIProcessor(config['OPEN_AI_KEY'])
+        message_processor = MessageProcessor(openai_processor=openai_processor)
         country_config = config['COUNTRIES'].get(country_code, {}) if country_code else {}
         
-        is_significant, matched_keywords, classification_method, translation_info = openai_processor.isMessageSignificant(
+        is_significant, matched_keywords, classification_method, translation_info = message_processor.isMessageSignificant(
             message_data['text'],
             country_config=country_config
         )

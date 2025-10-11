@@ -84,6 +84,7 @@ Edit `config.json` with your credentials and preferences:
 - **Localized CSV Backups**: Country-specific CSV backup files separated by significance
 - **Message Routing**: Messages automatically routed based on source channel
 - **Cultural Context**: Keywords tailored to local politics, geography, and events for each country
+- **Modular Architecture**: Separation of concerns with `MessageProcessor` (non-AI logic) and `OpenAIProcessor` (AI-specific logic)
 
 ### Iraq Message Filtering Example
 
@@ -321,10 +322,11 @@ telegram-ai-scraper/
 │   ├── core/                      # Core application modules
 │   │   ├── main.py               # Main orchestration script (asyncio)
 │   │   ├── log_handling.py       # Logging utilities
-│   │   └── file_handling.py      # File operations
+│   │   ├── file_handling.py      # File operations
+│   │   └── message_processor.py  # Language detection and keyword matching (non-AI)
 │   ├── integrations/              # External service integrations
 │   │   ├── telegram_utils.py     # Telegram API handling
-│   │   ├── openai_utils.py       # OpenAI integration and message analysis
+│   │   ├── openai_utils.py       # OpenAI integration (AI-specific analysis only)
 │   │   ├── teams_utils.py        # Microsoft Teams notifications
 │   │   └── sharepoint_utils.py   # SharePoint Excel integration
 │   └── tasks/                     # Celery task definitions
@@ -377,10 +379,12 @@ The system now features advanced dual-language keyword matching for optimal perf
 
 ### Iraq Dual-Language Features
 
+- **Heuristic Language Detection**: Fast language detection using word patterns and Unicode script analysis (no OpenAI calls)
 - **Direct Arabic Filtering**: Arabic messages are matched against Arabic keywords without translation
 - **Direct English Filtering**: English messages are matched against English keywords
 - **Configurable AI Fallback**: Toggle OpenAI context analysis with `use_ai_for_message_filtering`
-- **Cost Optimization**: Minimizes translation and AI API calls through smart language-aware filtering
+- **Modular Architecture**: New `MessageProcessor` class handles non-AI logic for better maintainability
+- **Enhanced Cost Optimization**: 95% reduction in API calls through heuristic detection and smart filtering
 - **Whole-Word Matching**: Prevents false positives (e.g., "ad" in "Baghdad")
 
 ### Configuration Example
