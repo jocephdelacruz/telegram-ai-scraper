@@ -14,6 +14,7 @@ sys.path.append(project_root)
 
 from src.core.file_handling import FileHandling
 from src.integrations.telegram_utils import TelegramScraper
+from src.integrations.telegram_session_manager import TelegramRateLimitError, TelegramSessionError, TelegramAuthError
 
 async def authenticate_telegram():
     """Force Telegram authentication"""
@@ -88,27 +89,54 @@ async def authenticate_telegram():
                 print("❌ Telegram authentication failed")
                 return False
                 
+        except TelegramRateLimitError as e:
+            print(f"🚫 RATE LIMITED: {e}")
+            print("⏰ You must wait for the rate limit to expire before authenticating")
+            print("💡 Use 'python3 tests/check_telegram_status.py' to monitor the rate limit")
+            return False
+            
+        except TelegramSessionError as e:
+            print(f"🔐 SESSION ERROR: {e}")
+            print("💡 This is normal during first-time authentication - please continue")
+            return False
+            
+        except TelegramAuthError as e:
+            print(f"🚨 AUTHENTICATION ERROR: {e}")
+            
+            error_msg = str(e)
+            if "Invalid API" in error_msg:
+                print("🔧 Issue: Invalid API credentials")
+                print("💡 Solution: Double-check API_ID and API_HASH from https://my.telegram.org/apps")
+            elif "phone number" in error_msg.lower():
+                print("🔧 Issue: Invalid phone number format")
+                print("💡 Solution: Ensure phone number includes country code (e.g., +639693532299)")
+            else:
+                print("💡 Check your API credentials and network connection")
+            
+            return False
+            
         except Exception as auth_error:
             print(f"❌ Detailed authentication error: {auth_error}")
             print(f"❌ Error type: {type(auth_error).__name__}")
             
-            # Common error scenarios
-            if "PHONE_NUMBER_INVALID" in str(auth_error):
+            # Common error scenarios for legacy errors
+            error_str = str(auth_error)
+            if "PHONE_NUMBER_INVALID" in error_str:
                 print("🔧 Issue: Invalid phone number format")
                 print("💡 Solution: Ensure phone number includes country code (e.g., +639693532299)")
-            elif "API_ID_INVALID" in str(auth_error):
+            elif "API_ID_INVALID" in error_str:
                 print("🔧 Issue: Invalid API_ID")
                 print("💡 Solution: Double-check API_ID from https://my.telegram.org/apps")
-            elif "API_HASH_INVALID" in str(auth_error):
+            elif "API_HASH_INVALID" in error_str:
                 print("🔧 Issue: Invalid API_HASH")
                 print("💡 Solution: Double-check API_HASH from https://my.telegram.org/apps")
-            elif "PHONE_CODE_EXPIRED" in str(auth_error):
+            elif "PHONE_CODE_EXPIRED" in error_str:
                 print("🔧 Issue: SMS verification code expired")
                 print("💡 Solution: Request a new code and try again quickly")
-            elif "PHONE_CODE_INVALID" in str(auth_error):
+            elif "PHONE_CODE_INVALID" in error_str:
                 print("🔧 Issue: Invalid SMS verification code")
                 print("💡 Solution: Double-check the code from your SMS")
-            elif "ConnectionError" in str(auth_error) or "TimeoutError" in str(auth_error):
+            elif "ConnectionError" in error_str or "TimeoutError" in error_str:
                 print("🔧 Issue: Network connectivity problem")
                 print("💡 Solution: Check internet connection and firewall settings")
             else:

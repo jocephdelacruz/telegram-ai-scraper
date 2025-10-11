@@ -8,6 +8,7 @@ import json
 from datetime import datetime
 import asyncio
 from src.core import log_handling as lh
+from .telegram_session_manager import TelegramSessionManager, TelegramRateLimitError, TelegramSessionError, TelegramAuthError
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 LOG_FILE = os.path.join(PROJECT_ROOT, "logs", "telegram.log")
@@ -18,7 +19,7 @@ LOGGER = lh.LogHandling(LOG_FILE, LOG_TZ)
 class TelegramScraper:
     def __init__(self, api_id, api_hash, phone_number, session_file="telegram_session"):
         """
-        Initialize Telegram scraper
+        Initialize Telegram scraper with advanced session management
         
         Args:
             api_id: Telegram API ID
@@ -31,84 +32,83 @@ class TelegramScraper:
             self.api_hash = api_hash
             self.phone_number = phone_number
             self.session_file = session_file
-            # Don't create TelegramClient in __init__ to avoid event loop issues
-            # Create it lazily when needed in async methods
+            
+            # Use advanced session manager instead of direct client management
+            self.session_manager = TelegramSessionManager(api_id, api_hash, phone_number, session_file)
             self.client = None
             self.monitored_channels = []
             self.message_handler = None
-            LOGGER.writeLog("TelegramScraper initialized successfully")
+            LOGGER.writeLog("TelegramScraper initialized successfully with advanced session management")
         except Exception as e:
             LOGGER.writeLog(f"TelegramScraper initialization failed: {e}")
             raise
 
-    def _ensure_client(self):
-        """Ensure the Telegram client is created (lazy initialization)"""
-        if self.client is None:
-            try:
-                self.client = TelegramClient(self.session_file, self.api_id, self.api_hash)
-                LOGGER.writeLog("TelegramClient created successfully")
-            except Exception as e:
-                LOGGER.writeLog(f"Failed to create TelegramClient: {e}")
-                raise
-        return self.client
+    async def _ensure_client(self):
+        """Ensure we have a working client connection with improved error handling"""
+        try:
+            self.client = await self.session_manager.get_client()
+            return self.client
+        except Exception as e:
+            error_msg = str(e)
+            LOGGER.writeLog(f"Failed to ensure Telegram client: {error_msg}")
+            
+            # The session manager already provides detailed error classification
+            # Just re-raise the specific exception types
+            raise
 
     async def start_client(self):
-        """Start the Telegram client and authenticate if needed"""
+        """Start the Telegram client using the advanced session manager"""
         try:
-            # Ensure client is created
-            client = self._ensure_client()
-            
-            # More explicit authentication with better error handling
-            await client.start(
-                phone=lambda: self.phone_number,
-                code_callback=self._code_callback,
-                password=self._password_callback
-            )
-            LOGGER.writeLog("Telegram client started successfully")
+            self.client = await self.session_manager.get_client()
+            LOGGER.writeLog("Telegram client started successfully via session manager")
             return True
+        except TelegramRateLimitError as e:
+            LOGGER.writeLog(f"🚫 TELEGRAM RATE LIMITED: {e}")
+            LOGGER.writeLog("⚠️  System will pause until rate limit expires. Use 'python3 tests/check_telegram_status.py' to monitor.")
+            raise
+        except TelegramSessionError as e:
+            LOGGER.writeLog(f"🔐 SESSION ISSUE: {e}")
+            LOGGER.writeLog("💡 Run 'python3 scripts/telegram_auth.py' to re-authenticate")
+            raise
+        except TelegramAuthError as e:
+            LOGGER.writeLog(f"� AUTH ERROR: {e}")
+            LOGGER.writeLog("💡 Check your API credentials in config.json")
+            raise
         except Exception as e:
-            LOGGER.writeLog(f"Failed to start Telegram client: {e}")
-            # Re-raise the exception so the calling code can handle it with detailed messages
-            raise e
+            LOGGER.writeLog(f"❌ Unexpected error starting client: {e}")
+            raise
 
-    def _code_callback(self):
-        """Callback for SMS verification code input"""
-        try:
-            code = input("Please enter the verification code sent to your phone: ")
-            return code.strip()
-        except KeyboardInterrupt:
-            print("\n❌ Authentication cancelled by user")
-            raise
-        except Exception as e:
-            print(f"❌ Error getting verification code: {e}")
-            raise
 
-    def _password_callback(self):
-        """Callback for 2FA password input (if enabled)"""
-        try:
-            import getpass
-            password = getpass.getpass("Please enter your 2FA password (if enabled): ")
-            return password.strip()
-        except KeyboardInterrupt:
-            print("\n❌ Authentication cancelled by user")
-            raise
-        except Exception as e:
-            print(f"❌ Error getting 2FA password: {e}")
-            raise
 
     async def stop_client(self):
-        """Stop the Telegram client"""
+        """Stop the Telegram client using the session manager"""
         try:
-            if self.client:
-                await self.client.disconnect()
-                LOGGER.writeLog("Telegram client stopped successfully")
+            await self.session_manager.close()
+            self.client = None
+            LOGGER.writeLog("Telegram client stopped successfully via session manager")
         except Exception as e:
             LOGGER.writeLog(f"Error stopping Telegram client: {e}")
+
+    def get_session_status(self):
+        """Get current session status information"""
+        return self.session_manager.get_connection_status()
+
+    def is_rate_limited(self):
+        """Check if currently rate limited"""
+        return self.session_manager.is_rate_limited()
+
+    def get_rate_limit_info(self):
+        """Get rate limit information"""
+        return self.session_manager.get_rate_limit_info()
+
+    async def health_check(self):
+        """Perform a comprehensive health check"""
+        return await self.session_manager.health_check()
 
     async def get_channel_entity(self, channel_username):
         """Get channel entity by username"""
         try:
-            client = self._ensure_client()
+            client = await self._ensure_client()
             entity = await client.get_entity(channel_username)
             LOGGER.writeLog(f"Successfully retrieved entity for channel: {channel_username}")
             return entity
@@ -135,7 +135,7 @@ class TelegramScraper:
             if not entity:
                 return []
 
-            client = self._ensure_client()
+            client = await self._ensure_client()
             messages = []
             message_count = 0
             new_messages = 0
@@ -322,7 +322,7 @@ class TelegramScraper:
                 return
 
             # Set up event handler for new messages
-            client = self._ensure_client()
+            client = await self._ensure_client()
             @client.on(events.NewMessage(chats=channel_entities))
             async def handle_new_message(event):
                 try:
@@ -395,7 +395,7 @@ class TelegramScraper:
             if not entity:
                 return []
 
-            client = self._ensure_client()
+            client = await self._ensure_client()
             messages = []
             async for message in client.iter_messages(entity, search=query, limit=limit):
                 message_data = await self.parse_message(message, channel_username)

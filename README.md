@@ -6,6 +6,8 @@ An intelligent, high-performance Telegram message scraper that uses OpenAI to an
 
 - **Periodic Message Fetching**: Automatically checks for new messages every 3 minutes (configurable) with intelligent age filtering
 - **Real-time Monitoring**: Continuously monitors specified Telegram channels for new messages using asyncio
+- **Advanced Session Management**: Intelligent Telegram session handling with automatic recovery and rate limit management
+- **Resilient Error Handling**: Smart retry logic with graceful degradation for API issues and rate limiting
 - **Distributed Processing**: Uses Celery workers for parallel processing of AI analysis, notifications, and data storage
 - **Intelligent Message Filtering**: Country-specific keyword filtering with AI fallback for optimal performance and accuracy
 - **Multi-language Support**: Automatic language detection and translation to English for non-English messages
@@ -19,6 +21,7 @@ An intelligent, high-performance Telegram message scraper that uses OpenAI to an
 - **CSV Backup**: Local CSV backup of all processed messages
 - **Redis Integration**: Uses Redis as message broker and result backend
 - **Task Monitoring**: Real-time monitoring of task queues and worker status
+- **Session Recovery Tools**: Automated diagnostics and recovery assistance for Telegram API issues
 - **Flexible Configuration**: JSON-based configuration for easy customization
 
 ## Prerequisites
@@ -197,6 +200,7 @@ chmod +x scripts/quick_start.sh
 | `./scripts/run_tests.sh --quick` | **Essential tests only** | Regular validation, CI/CD | Skips API connections, focuses on core functionality |
 | `./scripts/run_tests.sh --component` | Component testing only | Development and debugging | Tests imports, log handling, file operations |
 | `./scripts/run_tests.sh --config` | Configuration validation | After config changes | Validates JSON structure, required fields, Iraq dual-language format |
+| `./scripts/run_tests.sh --session` | **Session manager tests** | After session changes | Tests session management, status checking, recovery tools |
 | `./scripts/run_tests.sh --language` | Language detection tests | Test heuristic detection | Arabic/English detection without OpenAI calls |
 | `./scripts/run_tests.sh --processing` | Message processing tests | Test dual-language logic | Iraq keyword matching, AI toggle, translation |
 
@@ -204,6 +208,9 @@ chmod +x scripts/quick_start.sh
 | Script | Purpose | When to Use | Key Features |
 |--------|---------|-------------|--------------|
 | `tests/validate_telegram_config.py` | **Telegram credential validator** | Before authentication, credential issues | Network tests, credential validation, interactive updates |
+| `scripts/telegram_session_check.py` | **Advanced session status checker** | Any time, troubleshooting | Comprehensive diagnostics with recovery guidance |
+| `tests/check_telegram_status.py` | API rate limit status checker | Check rate limiting status | Monitors API rate limits and provides recovery timeline |
+| `tests/telegram_recovery.py` | Automated recovery script | After rate limit expires | Restores system operation post-rate-limit |
 | `tests/test_translation.py` | Translation system testing | Verify OpenAI integration | Test language detection and translation |
 | `tests/test_components.py` | Component testing | Development and debugging | Individual component validation |
 | `tests/test_message_fetch.py` | **Periodic message fetching test** | Verify 3-minute fetch intervals | Tests new periodic fetching with age filtering |
@@ -342,6 +349,7 @@ telegram-ai-scraper/
 │   │   └── message_processor.py  # Language detection and keyword matching (non-AI)
 │   ├── integrations/              # External service integrations
 │   │   ├── telegram_utils.py     # Telegram API handling
+│   │   ├── telegram_session_manager.py # Advanced Telegram session management
 │   │   ├── openai_utils.py       # OpenAI integration (AI-specific analysis only)
 │   │   ├── teams_utils.py        # Microsoft Teams notifications
 │   │   └── sharepoint_utils.py   # SharePoint Excel integration
@@ -354,6 +362,7 @@ telegram-ai-scraper/
 ├── scripts/                       # Deployment and management scripts
 │   ├── setup.sh                 # Initial environment setup (run once)
 │   ├── quick_start.sh           # Complete restart sequence (after reboot)
+│   ├── telegram_session_check.py # Advanced session status checker and recovery assistant
 │   ├── deploy_celery.sh         # Celery worker management
 │   ├── run_app.sh               # Main application runner
 │   ├── monitor_resources.sh     # System resource monitoring

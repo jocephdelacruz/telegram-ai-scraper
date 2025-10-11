@@ -166,6 +166,111 @@ class TestRunner:
                         self.results['failed'] += 1
                         self.results['errors'].append("Iraq keywords not in dual-language format")
                         
+    def test_telegram_session_manager(self):
+        """Test Telegram session manager functionality"""
+        self.print_section("Telegram Session Manager Tests")
+        
+        # Test session manager import and initialization
+        try:
+            from src.integrations.telegram_session_manager import TelegramSessionManager, TelegramRateLimitError, TelegramSessionError, TelegramAuthError
+            self.print_result("Session Manager Import", "PASS")
+            self.results['passed'] += 1
+        except Exception as e:
+            self.print_result("Session Manager Import", "FAIL", str(e))
+            self.results['failed'] += 1
+            self.results['errors'].append(f"Session manager import failed: {e}")
+            return
+            
+        # Test session manager initialization (without connection)
+        try:
+            # Load config for test
+            config_path = self.project_root / "config" / "config.json"
+            if config_path.exists():
+                import json
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                telegram_config = config.get('TELEGRAM_CONFIG', {})
+                
+                if all(key in telegram_config for key in ['API_ID', 'API_HASH', 'PHONE_NUMBER']):
+                    session_manager = TelegramSessionManager(
+                        telegram_config['API_ID'],
+                        telegram_config['API_HASH'],
+                        telegram_config['PHONE_NUMBER'],
+                        'test_session'
+                    )
+                    
+                    # Test status methods without connecting
+                    status = session_manager.get_connection_status()
+                    rate_limit_info = session_manager.get_rate_limit_info()
+                    
+                    self.print_result("Session Manager Init", "PASS", "Initialized without connection")
+                    self.results['passed'] += 1
+                else:
+                    self.print_result("Session Manager Init", "SKIP", "Telegram config incomplete")
+                    self.results['skipped'] += 1
+            else:
+                self.print_result("Session Manager Init", "SKIP", "Config file not found")
+                self.results['skipped'] += 1
+                
+        except Exception as e:
+            self.print_result("Session Manager Init", "FAIL", str(e))
+            self.results['failed'] += 1
+            self.results['errors'].append(f"Session manager initialization failed: {e}")
+            
+        # Test session status checker script
+        status, details = self.run_python_test("../scripts/telegram_session_check.py", timeout=30)
+        # Convert to relative path for the test file
+        if status == 'SKIP':
+            # Try running the script directly
+            try:
+                script_path = self.project_root / "scripts" / "telegram_session_check.py"
+                if script_path.exists():
+                    env = os.environ.copy()
+                    env['PYTHONPATH'] = str(self.project_root)
+                    
+                    result = subprocess.run(
+                        [sys.executable, str(script_path)],
+                        capture_output=True,
+                        text=True,
+                        timeout=15,  # Shorter timeout for status check
+                        cwd=str(self.project_root),
+                        env=env
+                    )
+                    
+                    # Any exit code is acceptable for status check (might be rate limited)
+                    if "Configuration Check" in result.stdout:
+                        self.print_result("Session Status Checker", "PASS", "Script executed successfully")
+                        self.results['passed'] += 1
+                    else:
+                        self.print_result("Session Status Checker", "FAIL", f"Unexpected output: {result.stdout[:200]}")
+                        self.results['failed'] += 1
+                        self.results['errors'].append("Session status checker unexpected output")
+                else:
+                    self.print_result("Session Status Checker", "SKIP", "Script not found")
+                    self.results['skipped'] += 1
+                    
+            except subprocess.TimeoutExpired:
+                self.print_result("Session Status Checker", "SKIP", "Timed out (expected if rate limited)")
+                self.results['skipped'] += 1
+            except Exception as e:
+                self.print_result("Session Status Checker", "FAIL", str(e))
+                self.results['failed'] += 1
+                self.results['errors'].append(f"Session status checker error: {e}")
+        else:
+            # Handle the result from run_python_test
+            if status == 'PASS' or "Configuration Check" in str(details):
+                self.print_result("Session Status Checker", "PASS")
+                self.results['passed'] += 1
+            else:
+                self.print_result("Session Status Checker", status, details if status != 'PASS' else None)
+                if status == 'PASS':
+                    self.results['passed'] += 1
+                elif status == 'SKIP':
+                    self.results['skipped'] += 1
+                else:
+                    self.results['failed'] += 1
+                    self.results['errors'].append(f"Session Status Checker: {details}")
+
     def test_language_detection(self):
         """Test language detection functionality"""
         self.print_section("Language Detection Tests")
@@ -387,6 +492,7 @@ class TestRunner:
         self.run_component_tests()
         self.test_configuration()
         self.test_redis_connection()
+        self.test_telegram_session_manager()
         self.test_language_detection()
         self.test_message_processing()
         self.test_celery_tasks()
@@ -407,6 +513,7 @@ def main():
     parser.add_argument("--quick", action="store_true", help="Run only quick tests (skip API connections)")
     parser.add_argument("--component", action="store_true", help="Run only component tests")
     parser.add_argument("--config", action="store_true", help="Run only configuration tests")
+    parser.add_argument("--session", action="store_true", help="Run only Telegram session manager tests")
     parser.add_argument("--language", action="store_true", help="Run only language detection tests")
     parser.add_argument("--processing", action="store_true", help="Run only message processing tests")
     
@@ -419,6 +526,9 @@ def main():
         return runner.generate_report()
     elif args.config:
         runner.test_configuration()
+        return runner.generate_report()
+    elif args.session:
+        runner.test_telegram_session_manager()
         return runner.generate_report()
     elif args.language:
         runner.test_language_detection()

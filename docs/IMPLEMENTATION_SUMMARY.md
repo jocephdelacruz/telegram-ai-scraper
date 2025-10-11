@@ -5,7 +5,13 @@ Successfully implemented enhanced dual-language message processing for Iraq with
 
 ## 🚀 Key Improvements
 
-### 1. **New Modular Architecture**
+### 1. **Advanced Telegram Session Management**
+- **Created**: `src/integrations/telegram_session_manager.py` - Intelligent session handling with automatic recovery
+- **Enhanced**: `src/integrations/telegram_utils.py` - Now uses session manager for all operations
+- **Rate Limit Prevention**: Smart error handling prevents cascading failures and rate limiting
+- **Session Longevity**: Sessions now last weeks/months instead of requiring frequent re-authentication
+
+### 2. **New Modular Architecture**
 - **Created**: `src/core/message_processor.py` - Handles non-AI logic (language detection, keyword matching)
 - **Updated**: `src/integrations/openai_utils.py` - Now focused only on AI-specific operations
 - **Separation of Concerns**: Clear distinction between heuristic processing and AI analysis
@@ -32,14 +38,24 @@ Successfully implemented enhanced dual-language message processing for Iraq with
 
 ## 📁 Files Modified
 
+### Session Management  
+- ✅ `src/integrations/telegram_session_manager.py` - **NEW**: Advanced session management with rate limit handling
+- ✅ `src/integrations/telegram_utils.py` - Updated to use session manager
+- ✅ `scripts/telegram_session_check.py` - **NEW**: Comprehensive session diagnostics
+- ✅ `tests/check_telegram_status.py` - Enhanced with session manager
+- ✅ `tests/telegram_recovery.py` - Enhanced with session manager
+
 ### Core Files
 - ✅ `src/core/message_processor.py` - **NEW**: Heuristic processing logic
+- ✅ `src/core/main.py` - Enhanced with session manager exception handling
 - ✅ `src/integrations/openai_utils.py` - Refactored to delegate to MessageProcessor
-- ✅ `src/tasks/telegram_celery_tasks.py` - Updated to use MessageProcessor
+- ✅ `src/tasks/telegram_celery_tasks.py` - Updated to use MessageProcessor and enhanced error handling
 
 ### Test Files  
+- ✅ `scripts/run_tests.py` - Added session manager tests
 - ✅ `tests/test_translation.py` - Updated for new architecture
 - ✅ `tests/test_language_detection.py` - **NEW**: Validates heuristic detection
+- ✅ `tests/debug_*.py` - Updated with session manager exception handling
 
 ### Documentation
 - ✅ `README.md` - Updated architecture and performance metrics

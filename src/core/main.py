@@ -19,6 +19,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from src.core import log_handling as lh
 from src.core import file_handling as fh
 from src.integrations.telegram_utils import TelegramScraper
+from src.integrations.telegram_session_manager import TelegramRateLimitError, TelegramSessionError, TelegramAuthError
 from src.integrations.openai_utils import OpenAIProcessor
 from src.integrations.teams_utils import TeamsNotifier
 from src.integrations.sharepoint_utils import SharepointProcessor
@@ -141,24 +142,56 @@ class TelegramAIScraper:
             LOGGER.writeLog(f"Total channels to monitor: {len(all_channels)}")
             
             print("Starting Telegram client...")
-            # Start Telegram client
-            success = await self.telegram_scraper.start_client()
-            if not success:
-                print("❌ Failed to start Telegram client")
-                print("🔧 This usually means authentication is needed")
-                print("🚀 Run: python3 scripts/telegram_auth.py")
-                LOGGER.writeLog("Failed to start Telegram client - authentication likely needed")
+            # Start Telegram client with enhanced error handling
+            try:
+                success = await self.telegram_scraper.start_client()
+                if success:
+                    print("✅ Telegram client started successfully")
+                    LOGGER.writeLog("Telegram scraper initialized")
+                else:
+                    print("❌ Failed to start Telegram client")
+                    print("🔧 This usually means authentication is needed")
+                    print("🚀 Run: python3 scripts/telegram_auth.py")
+                    LOGGER.writeLog("Failed to start Telegram client - authentication likely needed")
+                    
+                    # In test mode, we can continue without Telegram to test other components
+                    if hasattr(self, '_test_mode') and self._test_mode:
+                        print("⚠️  Continuing in test mode without Telegram")
+                        self.telegram_scraper = None
+                    else:
+                        # In monitor/historical mode, Telegram is required
+                        raise Exception("Telegram client authentication required. Run: python3 scripts/telegram_auth.py")
+                        
+            except TelegramRateLimitError as e:
+                print(f"🚫 TELEGRAM RATE LIMITED: {e}")
+                print("⏸️  System must wait for rate limit to expire")
+                print("📊 Use 'python3 tests/check_telegram_status.py' to monitor")
+                LOGGER.writeLog(f"Telegram rate limited: {e}")
+                raise Exception("Telegram API rate limited - system cannot start")
                 
-                # In test mode, we can continue without Telegram to test other components
+            except TelegramSessionError as e:
+                print(f"🔐 TELEGRAM SESSION ERROR: {e}")
+                print("🔑 Run 'python3 scripts/telegram_auth.py' to re-authenticate")
+                LOGGER.writeLog(f"Telegram session error: {e}")
+                
+                # In test mode, continue without Telegram
                 if hasattr(self, '_test_mode') and self._test_mode:
                     print("⚠️  Continuing in test mode without Telegram")
                     self.telegram_scraper = None
                 else:
-                    # In monitor/historical mode, Telegram is required
-                    raise Exception("Telegram client authentication required. Run: python3 scripts/telegram_auth.py")
-            else:
-                print("✅ Telegram client started successfully")
-                LOGGER.writeLog("Telegram scraper initialized")
+                    raise Exception("Telegram session authentication required. Run: python3 scripts/telegram_auth.py")
+                    
+            except TelegramAuthError as e:
+                print(f"🚨 TELEGRAM AUTH ERROR: {e}")
+                print("🔧 Check your API credentials in config.json")
+                LOGGER.writeLog(f"Telegram auth error: {e}")
+                
+                # In test mode, continue without Telegram
+                if hasattr(self, '_test_mode') and self._test_mode:
+                    print("⚠️  Continuing in test mode without Telegram")
+                    self.telegram_scraper = None
+                else:
+                    raise Exception("Telegram authentication failed - check API credentials")
 
             print("Initializing Teams notifier...")
             # Initialize Teams notifier - check both old and new config locations

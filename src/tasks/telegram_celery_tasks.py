@@ -375,6 +375,7 @@ def fetch_new_messages_from_all_channels(self):
         
         from src.core import file_handling as fh
         from src.integrations.telegram_utils import TelegramScraper
+        from src.integrations.telegram_session_manager import TelegramRateLimitError, TelegramSessionError, TelegramAuthError
         import asyncio
         
         # Load config
@@ -448,8 +449,53 @@ def fetch_new_messages_from_all_channels(self):
             "fetch_limit": message_limit
         }
         
+    except TelegramRateLimitError as e:
+        # Rate limiting - don't retry, just log and return status
+        LOGGER.writeLog(f"🚫 TELEGRAM RATE LIMITED: {e}")
+        LOGGER.writeLog("⏸️  Stopping periodic fetch until rate limit expires. Use 'python3 tests/check_telegram_status.py' to monitor recovery.")
+        return {
+            "status": "rate_limited",
+            "timestamp": datetime.now().isoformat(),
+            "error": str(e),
+            "channels_checked": 0,
+            "messages_processed": 0,
+            "messages_skipped": 0
+        }
+        
+    except TelegramSessionError as e:
+        # Session issue - retry with backoff but limit attempts
+        LOGGER.writeLog(f"🔐 SESSION ISSUE: {e}")
+        if self.request.retries < 2:  # Only retry twice for session issues
+            LOGGER.writeLog("🔄 Will retry with 5-minute backoff")
+            raise self.retry(exc=e, countdown=300)  # Wait 5 minutes before retry
+        else:
+            LOGGER.writeLog("❌ SESSION ISSUE: Max retries reached, stopping periodic fetch. Run 'python3 scripts/telegram_auth.py' to re-authenticate.")
+            return {
+                "status": "session_error",
+                "timestamp": datetime.now().isoformat(),
+                "error": str(e),
+                "channels_checked": 0,
+                "messages_processed": 0,
+                "messages_skipped": 0
+            }
+            
+    except TelegramAuthError as e:
+        # Authentication issue - don't retry, needs manual intervention
+        LOGGER.writeLog(f"🚨 TELEGRAM AUTH ERROR: {e}")
+        LOGGER.writeLog("💡 Check your API credentials in config.json or re-authenticate with 'python3 scripts/telegram_auth.py'")
+        return {
+            "status": "auth_error",
+            "timestamp": datetime.now().isoformat(),
+            "error": str(e),
+            "channels_checked": 0,
+            "messages_processed": 0,
+            "messages_skipped": 0
+        }
+        
     except Exception as e:
-        LOGGER.writeLog(f"Error in periodic message fetch: {e}")
+        # Other errors - use normal retry logic
+        error_msg = str(e)
+        LOGGER.writeLog(f"❌ Error in periodic message fetch: {error_msg}")
         raise self.retry(exc=e)
 
 

@@ -2,6 +2,15 @@
 
 # Telegram AI Scraper - Test Runner Script
 # Comprehensive test runner with environment setup
+#
+# Usage:
+#   ./scripts/run_tests.sh                    # Run all tests
+#   ./scripts/run_tests.sh --quick            # Run essential tests only
+#   ./scripts/run_tests.sh --component        # Run component tests only
+#   ./scripts/run_tests.sh --config           # Run configuration tests only
+#   ./scripts/run_tests.sh --session          # Run Telegram session manager tests only
+#   ./scripts/run_tests.sh --language         # Run language detection tests only
+#   ./scripts/run_tests.sh --processing       # Run message processing tests only
 
 # Colors for output
 RED='\033[0;31m'

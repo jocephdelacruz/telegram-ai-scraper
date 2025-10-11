@@ -86,6 +86,7 @@ def test_telegram_scraper_init():
         
         # Test initialization only (no connection)
         from src.integrations.telegram_utils import TelegramScraper
+        from src.integrations.telegram_session_manager import TelegramRateLimitError, TelegramSessionError, TelegramAuthError
         
         telegram_scraper = TelegramScraper(
             telegram_config['API_ID'],

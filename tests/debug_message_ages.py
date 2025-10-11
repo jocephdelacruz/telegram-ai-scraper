@@ -17,6 +17,7 @@ async def debug_message_ages():
         # Load config and create scraper
         from src.core import file_handling as fh
         from src.integrations.telegram_utils import TelegramScraper
+        from src.integrations.telegram_session_manager import TelegramRateLimitError, TelegramSessionError, TelegramAuthError
         
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         config_path = os.path.join(project_root, "config", "config.json")
@@ -32,7 +33,17 @@ async def debug_message_ages():
             telegram_config.get('SESSION_FILE', 'telegram_session')
         )
         
-        await telegram_scraper.start_client()
+        try:
+            await telegram_scraper.start_client()
+        except TelegramRateLimitError as e:
+            print(f"🚫 RATE LIMITED: {e}")
+            return
+        except TelegramSessionError as e:
+            print(f"🔐 SESSION ERROR: {e}")
+            return
+        except TelegramAuthError as e:
+            print(f"🚨 AUTH ERROR: {e}")
+            return
         
         # Fetch messages from the problematic channel
         test_channel = "@Mahdiasmr1995"

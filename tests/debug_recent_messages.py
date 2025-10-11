@@ -22,6 +22,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from src.core import file_handling as fh
 from src.integrations.telegram_utils import TelegramScraper
+from src.integrations.telegram_session_manager import TelegramRateLimitError, TelegramSessionError, TelegramAuthError
 
 async def debug_recent_messages():
     """Debug recent messages from channels that should have new content"""
@@ -74,6 +75,18 @@ async def debug_recent_messages():
         
         await telegram_scraper.start_client()
         print("✅ Telegram client connected")
+    except TelegramRateLimitError as e:
+        print(f"🚫 RATE LIMITED: {e}")
+        print("Use 'python3 tests/check_telegram_status.py' to monitor")
+        return
+    except TelegramSessionError as e:
+        print(f"🔐 SESSION ERROR: {e}")
+        print("Run 'python3 scripts/telegram_auth.py' to re-authenticate")
+        return
+    except TelegramAuthError as e:
+        print(f"🚨 AUTH ERROR: {e}")
+        print("Check your API credentials in config.json")
+        return
     except Exception as e:
         print(f"❌ Failed to connect to Telegram: {e}")
         return

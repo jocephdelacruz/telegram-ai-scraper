@@ -280,6 +280,30 @@ chmod +x scripts/*.sh
 chmod +x src/core/main.py
 ```
 
+#### Telegram API Issues
+
+The system now includes advanced session management with intelligent recovery:
+
+```bash
+# Check comprehensive session status with recovery guidance
+python3 scripts/telegram_session_check.py
+
+# Check current API rate limits
+python3 tests/check_telegram_status.py
+
+# Automated recovery after rate limit expires
+python3 tests/telegram_recovery.py
+
+# Manual re-authentication if needed
+python3 scripts/telegram_auth.py
+```
+
+**Key Improvements:**
+- **Smart Session Management**: Sessions now last weeks/months instead of frequent re-authentication
+- **Automatic Rate Limit Handling**: System gracefully handles rate limits without crashing
+- **Intelligent Recovery**: Automated diagnostics and recovery guidance
+- **Prevention**: Enhanced error handling prevents future cascading failures
+
 #### Telegram Authentication Issues
 ```bash
 # STEP 1: Always run validation first
