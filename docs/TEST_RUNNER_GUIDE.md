@@ -95,7 +95,7 @@ The `run_app.sh` script now includes:
 - **Ping Response**: Validates Redis is responding
 
 ### 7. Extended Tests (Full Mode Only)
-- **API Connections**: Tests OpenAI, Teams, SharePoint connections
+- **API Connections**: Tests OpenAI, Teams, SharePoint connections (SharePoint tests use dedicated test sheets for production safety)
 - **Message Fetch**: Tests Telegram authentication and message retrieval
 
 ## Adding New Tests

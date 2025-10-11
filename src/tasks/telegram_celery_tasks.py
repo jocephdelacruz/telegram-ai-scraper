@@ -278,10 +278,23 @@ def save_to_sharepoint(self, message_data, config, country_code):
         # Filter message data to only include fields expected in SharePoint
         filtered_message_data = {}
         for field in excel_fields:
-            filtered_message_data[field] = message_data.get(field, '')
+            value = message_data.get(field, '')
+            
+            # Apply Excel formula escaping for Channel field to prevent #NAME? errors
+            if field == 'Channel' and isinstance(value, str) and value.startswith('@'):
+                # Add single quote prefix to prevent Excel from treating as formula/reference
+                value = f"'{value}"
+                LOGGER.writeLog(f"Applied Excel escaping to channel: {message_data.get(field, '')} → {value}")
+            
+            filtered_message_data[field] = value
+        
+        LOGGER.writeLog(f"Filtered message data - Original fields: {len(message_data)}, Filtered fields: {len(filtered_message_data)}")
         
         sp_data = [filtered_message_data]  # Single filtered message
         sp_format_data = sp_processor.convertDictToSPFormat(sp_data, excel_fields)
+        
+        if not sp_format_data:
+            raise Exception("Failed to convert message data to SharePoint format")
         
         # Find next available row and save
         try:
@@ -293,7 +306,13 @@ def save_to_sharepoint(self, message_data, config, country_code):
         
         range_address = f"A{next_row}:{chr(ord('A') + len(excel_fields) - 1)}{next_row}"
         
-        success = sp_processor.updateRange(sheet_name, range_address, sp_format_data)
+        # Only send the data row, not the headers (convertDictToSPFormat returns [headers, data])
+        if len(sp_format_data) > 1:
+            data_only = [sp_format_data[1]]  # Only the data row
+            LOGGER.writeLog(f"Writing data to {sheet_name} sheet at {range_address}: {len(data_only[0])} columns")
+            success = sp_processor.updateRange(sheet_name, range_address, data_only)
+        else:
+            raise Exception("No data row found after SharePoint format conversion")
         
         # Close the session
         sp_processor.closeExcelSession()
@@ -628,21 +647,45 @@ def health_check():
 def get_next_available_row(sp_processor, sheet_name):
     """Helper function to find the next available row in SharePoint"""
     try:
-        # This is a simplified implementation
-        # You might need to implement proper row detection based on your SharePoint structure
-        # For now, we'll use a simple incrementing approach
+        # Get the used range to find the last row with data
+        import requests
         
-        # You could implement logic to:
-        # 1. Read current data range
-        # 2. Find the last used row
-        # 3. Return next row number
+        headers = {
+            "Authorization": f"Bearer {sp_processor.token}",
+            "workbook-session-id": sp_processor.sessionID,
+            "Content-Type": "application/json"
+        }
         
-        # Placeholder implementation - always append to row 2 for now
-        # You should implement proper row finding logic based on your needs
-        return 2
+        # Get the used range for the worksheet
+        url = f"https://graph.microsoft.com/v1.0/sites/{sp_processor.siteID}/drive/items/{sp_processor.fileID}/workbook/worksheets/{sheet_name}/usedRange"
+        
+        response = requests.get(url, headers=headers)
+        
+        if response.status_code == 200:
+            used_range = response.json()
+            row_count = used_range.get('rowCount', 0)
+            
+            # If there's no data, start at row 2 (assuming headers in row 1)
+            if row_count <= 1:  # Only headers or empty sheet
+                next_row = 2
+                LOGGER.writeLog(f"Sheet {sheet_name} has {row_count} rows, starting at row 2")
+            else:
+                # Next available row is after the last used row
+                next_row = row_count + 1
+                LOGGER.writeLog(f"Sheet {sheet_name} has {row_count} rows, next available: {next_row}")
+            
+            return next_row
+            
+        elif response.status_code == 404:
+            # Sheet might be empty or new, start at row 2
+            LOGGER.writeLog(f"Sheet {sheet_name} appears to be empty, starting at row 2")
+            return 2
+        else:
+            LOGGER.writeLog(f"Error getting used range for {sheet_name}: HTTP {response.status_code}")
+            return 2  # Default fallback
         
     except Exception as e:
-        LOGGER.writeLog(f"Error finding next available row: {e}")
+        LOGGER.writeLog(f"Error finding next available row in {sheet_name}: {e}")
         return 2  # Default fallback
 
 

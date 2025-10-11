@@ -112,6 +112,31 @@ This will test:
 - ✅ SharePoint access
 - ✅ Redis connectivity
 
+**Comprehensive Test Suite (Advanced)**:
+```bash
+# Run complete test suite with all integrations
+./scripts/run_tests.sh
+
+# Test specific components
+./scripts/run_tests.sh --sharepoint    # SharePoint integration tests (PRODUCTION SAFE)
+./scripts/run_tests.sh --csv           # CSV storage tests  
+./scripts/run_tests.sh --config        # Configuration validation
+./scripts/run_tests.sh --quick         # Essential tests only
+```
+
+The SharePoint tests now include:
+- ✅ Connection & Authentication
+- ✅ Excel Formula Escaping (fixes #NAME? errors)
+- ✅ Header Creation (in dedicated test sheets)
+- ✅ Row Detection & Management  
+- ✅ Data Writing with Escaping
+- ✅ Celery Task Integration
+- ✅ High Row Number Validation
+- 🛡️ **Production Data Protection**: Uses `TEST_Significant` and `TEST_Trivial` sheets
+- 🧹 **Complete Cleanup**: Test sheets completely deleted after testing (no clutter)
+
+**IMPORTANT**: SharePoint tests are completely safe for production environments. They create and use dedicated test sheets (`TEST_Significant`, `TEST_Trivial`) and automatically clean up all test data. Your production data in the `Significant` and `Trivial` sheets will never be modified or deleted during testing.
+
 ### Step 3: Start Monitoring
 
 ```bash

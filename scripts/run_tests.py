@@ -330,6 +330,37 @@ class TestRunner:
             self.results['failed'] += 1
             self.results['errors'].append(f"CSV Message Storage: {details}")
             
+    def test_sharepoint_storage(self):
+        """Test SharePoint message storage functionality"""
+        self.print_section("SharePoint Storage Tests")
+        
+        # Test comprehensive SharePoint message storage (consolidated test suite)
+        status, details = self.run_python_test("test_sharepoint_comprehensive.py", timeout=180)
+        self.print_result("SharePoint Comprehensive Suite", status, details if status != 'PASS' else None)
+        
+        if status == 'PASS':
+            self.results['passed'] += 1
+            # SharePoint comprehensive test includes multiple sub-tests
+            print("   ✅ Connection & Authentication")
+            print("   ✅ Excel Formula Escaping (#NAME? fix)")
+            print("   ✅ Header Creation")
+            print("   ✅ Row Detection & Management")
+            print("   ✅ Data Writing with Escaping")
+            print("   ✅ Celery Task Integration")
+            print("   ✅ High Row Number Validation")
+        elif status == 'SKIP':
+            self.results['skipped'] += 1
+        else:
+            self.results['failed'] += 1
+            self.results['errors'].append(f"SharePoint Comprehensive Suite: {details}")
+            
+        # Optional: Run debug utilities if needed
+        if status == 'FAIL':
+            print("   🛠️ Running debug utilities for troubleshooting...")
+            debug_status, debug_details = self.run_python_test("debug_sharepoint_utils.py", timeout=60)
+            if debug_status == 'PASS':
+                print("   📊 Debug information collected successfully")
+            
     def test_api_connections(self):
         """Test API connections"""
         self.print_section("API Connection Tests")
@@ -524,6 +555,7 @@ class TestRunner:
         self.test_language_detection()
         self.test_message_processing()
         self.test_csv_storage()
+        self.test_sharepoint_storage()
         self.test_celery_tasks()
         
         if not quick:
@@ -546,6 +578,7 @@ def main():
     parser.add_argument("--language", action="store_true", help="Run only language detection tests")
     parser.add_argument("--processing", action="store_true", help="Run only message processing tests")
     parser.add_argument("--csv", action="store_true", help="Run only CSV storage tests")
+    parser.add_argument("--sharepoint", action="store_true", help="Run only SharePoint storage tests")
     
     args = parser.parse_args()
     
@@ -568,6 +601,9 @@ def main():
         return runner.generate_report()
     elif args.csv:
         runner.test_csv_storage()
+        return runner.generate_report()
+    elif args.sharepoint:
+        runner.test_sharepoint_storage()
         return runner.generate_report()
     else:
         return runner.run_all(quick=args.quick)

@@ -204,6 +204,7 @@ chmod +x scripts/quick_start.sh
 | `./scripts/run_tests.sh --language` | Language detection tests | Test heuristic detection | Arabic/English detection without OpenAI calls |
 | `./scripts/run_tests.sh --processing` | Message processing tests | Test dual-language logic | Iraq keyword matching, AI toggle, translation |
 | `./scripts/run_tests.sh --csv` | **CSV storage tests** | Test message storage pipeline | Complete CSV storage validation, data filtering, field mapping |
+| `./scripts/run_tests.sh --sharepoint` | **SharePoint storage tests** | Test SharePoint integration | **PRODUCTION SAFE**: Uses dedicated test sheets, Excel formula escaping (#NAME? fix), comprehensive integration testing |
 
 #### Legacy Testing & Validation Tools  
 | Script | Purpose | When to Use | Key Features |

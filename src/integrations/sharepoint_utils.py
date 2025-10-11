@@ -141,8 +141,19 @@ class SharepointProcessor:
             "Content-Type": "application/json"
          }
          url = f"https://graph.microsoft.com/v1.0/sites/{self.siteID}/drive/items/{self.fileID}/workbook/worksheets/{worksheet_name}/range(address='{range_address}')"
+         
+         # Log the request details for debugging
+         LOGGER.writeLog(f"SharePoint updateRange: worksheet={worksheet_name}, range={range_address}, values={len(values)} rows")
+         LOGGER.writeLog(f"Request URL: {url}")
+         LOGGER.writeLog(f"Values data: {values}")
+         
          response = requests.patch(url, json={"values": values}, headers=headers)
-         #print(f"response in updateRange {response}")
+         
+         # Log response details
+         LOGGER.writeLog(f"SharePoint response: status={response.status_code}")
+         if response.status_code != 200:
+            LOGGER.writeLog(f"SharePoint error response: {response.text}")
+            
          return response.status_code == 200
       except Exception as e:
          LOGGER.writeLog(f"Failed to add values in {range_address} of excel file {self.fileID} - {e}")
