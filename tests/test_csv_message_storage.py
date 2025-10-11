@@ -27,18 +27,72 @@ from src.core.file_handling import FileHandling
 
 
 class CSVMessageStorageTestSuite:
-    """Comprehensive test suite for CSV message storage functionality"""
+    """Comprehensive test suite for CSV message storage functionality with production data protection"""
     
     def __init__(self):
         self.config = self._load_config()
         self.excel_fields = self.config.get('TELEGRAM_EXCEL_FIELDS', [])
         self.test_results = {}
         
+        # SAFETY: Use dedicated test CSV files to protect production data
+        self.data_dir = os.path.join(PROJECT_ROOT, "data")
+        self.test_csv_files = {
+            'significant': os.path.join(self.data_dir, "TEST_iraq_significant_messages.csv"),
+            'trivial': os.path.join(self.data_dir, "TEST_iraq_trivial_messages.csv")
+        }
+        self.test_files_created = []  # Track test files for cleanup
+        
     def _load_config(self):
         """Load application configuration"""
         config_path = os.path.join(PROJECT_ROOT, "config", "config.json")
         with open(config_path, 'r') as f:
             return json.load(f)
+    
+    def create_test_csv_files(self):
+        """Create dedicated test CSV files to protect production data"""
+        print("🛡️ Production Data Protection Setup")
+        print("=" * 50)
+        
+        os.makedirs(self.data_dir, exist_ok=True)
+        
+        for csv_type, csv_path in self.test_csv_files.items():
+            try:
+                # Create test CSV file with headers
+                with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.DictWriter(f, fieldnames=self.excel_fields)
+                    writer.writeheader()
+                
+                self.test_files_created.append(csv_path)
+                print(f"✅ Created test CSV: {os.path.basename(csv_path)}")
+                
+            except Exception as e:
+                print(f"❌ Failed to create test CSV {csv_path}: {e}")
+                return False
+        
+        return True
+    
+    def cleanup_test_csv_files(self):
+        """Delete test CSV files completely to keep production directory clean"""
+        print("\n🧹 Test CSV File Cleanup (Remove Test Files Completely)")
+        print("=" * 60)
+        
+        for csv_path in self.test_files_created:
+            try:
+                if os.path.exists(csv_path):
+                    # Count lines before deletion for reporting
+                    with open(csv_path, 'r', encoding='utf-8') as f:
+                        line_count = sum(1 for line in f) - 1  # Exclude header
+                    
+                    os.remove(csv_path)
+                    print(f"✅ Deleted test CSV: {os.path.basename(csv_path)} ({line_count} test entries removed)")
+                else:
+                    print(f"ℹ️ Test CSV not found: {os.path.basename(csv_path)} (nothing to delete)")
+                    
+            except Exception as e:
+                print(f"❌ Failed to delete test CSV {csv_path}: {e}")
+        
+        self.test_files_created.clear()
+        print(f"🛡️ Production data directory returned to clean state")
     
     def create_minimal_test_message(self):
         """Create minimal test message with only required fields"""
@@ -114,16 +168,19 @@ class CSVMessageStorageTestSuite:
         }
     
     def test_basic_csv_functionality(self):
-        """Test basic CSV writing functionality with FileHandling class"""
-        print("=== Testing Basic CSV Functionality ===")
+        """Test basic CSV writing functionality with FileHandling class (production safe)"""
+        print("=== Testing Basic CSV Functionality (Safe Test Files) ===")
         
         try:
-            # Create test file
-            test_file = os.path.join(PROJECT_ROOT, "data", "test_basic_csv.csv")
+            # Use dedicated test CSV file
+            test_file = self.test_csv_files['significant']
             file_handler = FileHandling(test_file)
             
-            # Test data
+            # Test data with clear test identification
             test_data = self.create_minimal_test_message()
+            test_data['Message_ID'] = 'TEST_basic_csv_100001'
+            test_data['Channel'] = '@TEST_basic_csv'
+            test_data['AI_Category'] = 'Significant'
             
             # Write to CSV
             success = file_handler.append_to_csv(test_data, self.excel_fields)
@@ -134,15 +191,13 @@ class CSVMessageStorageTestSuite:
                     content = f.read()
                     lines = content.strip().split('\n')
                 
-                if len(lines) >= 2 and '100001' in lines[1]:
-                    print("✅ Basic CSV functionality test PASSED")
+                if len(lines) >= 2 and 'TEST_basic_csv_100001' in lines[1]:
+                    print("✅ Basic CSV functionality test PASSED (written to test file)")
                     self.test_results['basic_csv'] = True
                 else:
                     print("❌ Basic CSV functionality test FAILED - Data not written correctly")
                     self.test_results['basic_csv'] = False
                 
-                # Clean up
-                os.remove(test_file)
             else:
                 print("❌ Basic CSV functionality test FAILED - Write operation failed")
                 self.test_results['basic_csv'] = False
@@ -185,27 +240,53 @@ class CSVMessageStorageTestSuite:
             self.test_results['data_filtering'] = False
     
     def test_celery_function_integration(self):
-        """Test integration with actual Celery CSV backup function"""
-        print("\n=== Testing Celery Function Integration ===")
+        """Test CSV logic without calling production Celery function (production safe)"""
+        print("\n=== Testing CSV Logic Integration (Production Safe) ===")
         
         try:
-            from src.tasks.telegram_celery_tasks import save_to_csv_backup
+            # Simulate the Celery function logic but use test files
+            test_cases = [
+                {'is_significant': True, 'csv_file': self.test_csv_files['significant']},
+                {'is_significant': False, 'csv_file': self.test_csv_files['trivial']}
+            ]
             
-            # Create test message
-            message_data = self.create_comprehensive_test_message()
+            success_count = 0
             
-            # Test the actual function
-            result = save_to_csv_backup.run(message_data, self.config)
+            for case in test_cases:
+                # Create test message
+                message_data = self.create_comprehensive_test_message()
+                message_data['is_significant'] = case['is_significant']
+                category = 'Significant' if case['is_significant'] else 'Trivial'
+                message_data['AI_Category'] = category
+                message_data['Message_ID'] = f"TEST_celery_{category.lower()}_{100002}"
+                message_data['Channel'] = f"@TEST_celery_{category.lower()}"
+                
+                # Use FileHandling class (same as Celery function)
+                file_handler = FileHandling(case['csv_file'])
+                
+                # Filter data (same as Celery function)
+                filtered_data = {}
+                for field in self.excel_fields:
+                    filtered_data[field] = message_data.get(field, '')
+                
+                # Write to test CSV
+                success = file_handler.append_to_csv(filtered_data, self.excel_fields)
+                
+                if success:
+                    success_count += 1
+                    print(f"✅ CSV logic test PASSED for {category} (test file)")
+                else:
+                    print(f"❌ CSV logic test FAILED for {category}")
             
-            if result and result.get('status') == 'success':
-                print("✅ Celery function integration test PASSED")
+            if success_count == 2:
+                print("✅ CSV logic integration test PASSED (both significant and trivial)")
                 self.test_results['celery_integration'] = True
             else:
-                print(f"❌ Celery function integration test FAILED - Result: {result}")
+                print(f"❌ CSV logic integration test FAILED - {success_count}/2 succeeded")
                 self.test_results['celery_integration'] = False
                 
         except Exception as e:
-            print(f"❌ Celery function integration test FAILED - Exception: {e}")
+            print(f"❌ CSV logic integration test FAILED - Exception: {e}")
             self.test_results['celery_integration'] = False
     
     def test_error_handling(self):
@@ -313,8 +394,8 @@ class CSVMessageStorageTestSuite:
             self.test_results['csv_format'] = False
     
     def test_production_scenario(self):
-        """Test realistic production scenario"""
-        print("\n=== Testing Production Scenario ===")
+        """Test realistic production scenario (production safe)"""
+        print("\n=== Testing Production Scenario (Safe Test Files) ===")
         
         try:
             # Simulate processing multiple messages with varying field structures
@@ -324,28 +405,32 @@ class CSVMessageStorageTestSuite:
                 self.create_malformed_test_message()
             ]
             
+            # Add test identifiers to prevent confusion with production data
+            for i, message in enumerate(messages):
+                message['Message_ID'] = f'TEST_production_{i + 100003}'
+                message['Channel'] = f'@TEST_production_{i + 1}'
+            
             success_count = 0
             
             for i, message in enumerate(messages):
                 try:
-                    # Apply the same filtering logic used in production
+                    # Apply data filtering (core fix)
                     filtered_data = {}
                     for field in self.excel_fields:
                         filtered_data[field] = message.get(field, '')
                     
-                    # Test file creation
-                    test_file = os.path.join(PROJECT_ROOT, "data", f"test_production_{i}.csv")
+                    # Use dedicated test file (alternating between significant and trivial)
+                    test_file = self.test_csv_files['significant'] if i % 2 == 0 else self.test_csv_files['trivial']
                     file_handler = FileHandling(test_file)
                     
                     if file_handler.append_to_csv(filtered_data, self.excel_fields):
                         success_count += 1
-                        
-                    # Clean up
-                    if os.path.exists(test_file):
-                        os.remove(test_file)
+                        print(f"   ✅ Message {i} written to test CSV")
+                    else:
+                        print(f"   ❌ Message {i} failed to write")
                         
                 except Exception as e:
-                    print(f"   Message {i} failed: {e}")
+                    print(f"   ❌ Message {i} failed: {e}")
             
             if success_count == len(messages):
                 print("✅ Production scenario test PASSED")
@@ -390,19 +475,29 @@ class CSVMessageStorageTestSuite:
         print("\n" + "="*70)
     
     def run_all_tests(self):
-        """Run the complete test suite"""
+        """Run the complete test suite with production data protection"""
         print("🔍 CSV MESSAGE STORAGE - COMPREHENSIVE TEST SUITE")
         print("="*60)
         print("Testing all aspects of CSV message storage functionality...")
+        print("🛡️ PRODUCTION SAFE: Uses dedicated test CSV files, then deletes them completely")
         
-        # Run all tests
-        self.test_basic_csv_functionality()
-        self.test_data_filtering()
-        self.test_celery_function_integration()
-        self.test_error_handling()
-        self.test_file_permissions()
-        self.test_csv_format_validation()
-        self.test_production_scenario()
+        # Create test CSV files for safe testing
+        test_files_ready = self.create_test_csv_files()
+        
+        if test_files_ready:
+            # Run all tests
+            self.test_basic_csv_functionality()
+            self.test_data_filtering()
+            self.test_celery_function_integration()
+            self.test_error_handling()
+            self.test_file_permissions()
+            self.test_csv_format_validation()
+            self.test_production_scenario()
+            
+            # Clean up test files completely
+            self.cleanup_test_csv_files()
+        else:
+            print("❌ Unable to create test CSV files - skipping tests")
         
         # Generate report
         self.generate_test_report()

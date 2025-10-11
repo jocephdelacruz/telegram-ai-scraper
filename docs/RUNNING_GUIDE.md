@@ -119,7 +119,7 @@ This will test:
 
 # Test specific components
 ./scripts/run_tests.sh --sharepoint    # SharePoint integration tests (PRODUCTION SAFE)
-./scripts/run_tests.sh --csv           # CSV storage tests  
+./scripts/run_tests.sh --csv           # CSV storage tests (PRODUCTION SAFE)  
 ./scripts/run_tests.sh --config        # Configuration validation
 ./scripts/run_tests.sh --quick         # Essential tests only
 ```
@@ -135,7 +135,9 @@ The SharePoint tests now include:
 - 🛡️ **Production Data Protection**: Uses `TEST_Significant` and `TEST_Trivial` sheets
 - 🧹 **Complete Cleanup**: Test sheets completely deleted after testing (no clutter)
 
-**IMPORTANT**: SharePoint tests are completely safe for production environments. They create and use dedicated test sheets (`TEST_Significant`, `TEST_Trivial`) and automatically clean up all test data. Your production data in the `Significant` and `Trivial` sheets will never be modified or deleted during testing.
+**IMPORTANT**: Both SharePoint and CSV tests are completely safe for production environments. 
+- **SharePoint tests** create and use dedicated test sheets (`TEST_Significant`, `TEST_Trivial`) and automatically clean up all test data. Your production data in the `Significant` and `Trivial` sheets will never be modified or deleted.
+- **CSV tests** create and use dedicated test CSV files (`TEST_iraq_significant_messages.csv`, `TEST_iraq_trivial_messages.csv`) and automatically delete them after testing. Your production CSV files (`iraq_significant_messages.csv`, `iraq_trivial_messages.csv`) remain untouched.
 
 ### Step 3: Start Monitoring
 
