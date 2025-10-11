@@ -55,7 +55,12 @@ CONFIG="${2:-config.json}"
 
 case "$MODE" in
     test)
-        print_status "Running connection tests..."
+        print_status "Running comprehensive system tests..."
+        ./scripts/run_tests.sh --quick
+        exit $?
+        ;;
+    test-api)
+        print_status "Running API connection tests only..."
         result=$(python3 src/core/main.py --mode test --config "$CONFIG" 2>&1)
         exit_code=$?
         echo "$result"
@@ -81,10 +86,11 @@ case "$MODE" in
         python3 src/core/main.py --mode historical --config "$CONFIG" --limit "$LIMIT"
         ;;
     *)
-        echo -e "${YELLOW}Usage: $0 {test|monitor|historical} [config_file] [limit]${NC}"
+        echo -e "${YELLOW}Usage: $0 {test|test-api|monitor|historical} [config_file] [limit]${NC}"
         echo ""
         echo "Commands:"
-        echo "  test        - Test connections to APIs and services"
+        echo "  test        - Run comprehensive system tests (recommended)"
+        echo "  test-api    - Test API connections only (legacy mode)"
         echo "  monitor     - Real-time monitoring of Telegram channels"
         echo "  historical  - Scrape historical messages from channels"
         echo ""
@@ -93,7 +99,8 @@ case "$MODE" in
         echo "  limit       - Messages per channel for historical mode (default: 100)"
         echo ""
         echo "Examples:"
-        echo "  $0 test                    # Test connections"
+        echo "  $0 test                    # Run comprehensive tests"
+        echo "  $0 test-api                # Test API connections only"
         echo "  $0 monitor                 # Start monitoring"
         echo "  $0 historical config.json 50  # Scrape 50 messages per channel"
         ;;

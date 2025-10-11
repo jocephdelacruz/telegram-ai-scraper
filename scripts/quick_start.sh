@@ -132,6 +132,7 @@ print_success "Configuration file found"
 # Step 4: Start Celery workers and services
 print_status "4. Starting Celery workers and services..."
 echo ""
+export CALLED_FROM_QUICK_START=true
 ./scripts/deploy_celery.sh start
 
 # Check if deploy was successful
@@ -147,15 +148,25 @@ fi
 print_status "5. Waiting for services to fully initialize..."
 sleep 15
 
-# Step 6: Test all connections
-print_status "6. Testing API connections and services..."
+# Step 6: Comprehensive system tests
+print_status "6. Running comprehensive system tests..."
 echo ""
-./scripts/run_app.sh test
+echo "Running quick system validation tests..."
+./scripts/run_tests.sh --quick
 
-if [ $? -eq 0 ]; then
-    print_success "Connection tests completed"
+test_exit_code=$?
+if [ $test_exit_code -eq 0 ]; then
+    print_success "All system tests passed!"
 else
-    print_warning "Some connection tests may have failed - check output above"
+    print_warning "Some tests failed or were skipped - check output above"
+    echo ""
+    read -p "Continue with startup despite test issues? (y/n): " -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        print_error "Startup cancelled due to test failures"
+        echo "Fix issues and run ./scripts/quick_start.sh again"
+        exit 1
+    fi
 fi
 
 # Step 7: Show final system status
@@ -182,8 +193,9 @@ echo "🔧 Management Commands:"
 echo "• Check status: ./scripts/deploy_celery.sh status"
 echo "• Restart services: ./scripts/deploy_celery.sh restart"
 echo "• Stop services: ./scripts/deploy_celery.sh stop"
-echo "• Test connections: ./scripts/run_app.sh test"
-echo "• Test message fetch: python3 tests/test_message_fetch.py"
+echo "• Run comprehensive tests: ./scripts/run_tests.sh"
+echo "• Run quick tests: ./scripts/run_tests.sh --quick"
+echo "• Test API connections only: ./scripts/run_app.sh test-api"
 echo "• Optional real-time monitoring: ./scripts/run_app.sh monitor"
 echo ""
 echo "📁 Important Directories:"

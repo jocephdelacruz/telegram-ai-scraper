@@ -469,8 +469,8 @@ async def main():
     """Main function"""
     parser = argparse.ArgumentParser(description='Telegram AI Scraper')
     parser.add_argument('--config', default='config.json', help='Configuration file path')
-    parser.add_argument('--mode', choices=['monitor', 'historical', 'test'], default='monitor',
-                       help='Operation mode: monitor (real-time), historical (scrape past messages), test (test connections)')
+    parser.add_argument('--mode', choices=['monitor', 'historical', 'test', 'test-full'], default='monitor',
+                       help='Operation mode: monitor (real-time), historical (scrape past messages), test (API connections only), test-full (comprehensive tests)')
     parser.add_argument('--limit', type=int, default=100, help='Limit for historical scraping per channel')
     
     args = parser.parse_args()
@@ -505,9 +505,21 @@ async def main():
         print("Components initialized successfully")
 
         # Execute based on mode
-        if args.mode == 'test':
-            print("Running connection tests...")
-            LOGGER.writeLog("Testing connections...")
+        if args.mode == 'test-full':
+            print("Running comprehensive system tests...")
+            LOGGER.writeLog("Running comprehensive system tests...")
+            
+            # Run the comprehensive test suite
+            import subprocess
+            result = subprocess.run([
+                sys.executable, 'scripts/run_tests.py'
+            ], cwd=scraper.config_path.parent)
+            
+            sys.exit(result.returncode)
+            
+        elif args.mode == 'test':
+            print("Running API connection tests...")
+            LOGGER.writeLog("Testing API connections...")
             
             # Test Teams connection
             if scraper.teams_notifier:

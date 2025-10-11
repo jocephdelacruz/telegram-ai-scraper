@@ -144,7 +144,7 @@ For detailed configuration examples and migration guides, see the [Complete Enha
 chmod +x scripts/setup.sh
 ./scripts/setup.sh
 
-# 2. Start everything with one command
+# 2. Start everything with one command (includes comprehensive testing)
 chmod +x scripts/quick_start.sh
 ./scripts/quick_start.sh
 ```
@@ -155,6 +155,13 @@ chmod +x scripts/quick_start.sh
 - ✅ Prompts for configuration (API keys, webhooks, etc.)
 - ✅ **Automatically runs Telegram authentication** (SMS verification)
 - ✅ Creates all required directories and files
+
+**What quick_start.sh now includes:**
+- ✅ Comprehensive system testing (validates all components)
+- ✅ Configuration file structure and required fields validation
+- ✅ Dual-language keyword format validation for Iraq
+- ✅ Language detection and message processing pipeline testing
+- ✅ Redis connection and Celery task registration verification
 
 #### After Server Restart
 ```bash
@@ -183,22 +190,31 @@ chmod +x scripts/quick_start.sh
 | `status.sh` | Service status check | Quick health check | Process status, resource usage |
 | `verify_setup.sh` | System setup validation | Before first run, troubleshooting | Comprehensive system check |
 
-#### Testing & Validation Tools
+#### Comprehensive Testing System
+| Command | Purpose | When to Use | Key Features |
+|---------|---------|-------------|--------------|
+| `./scripts/run_tests.sh` | **Complete system validation** | After changes, before deployment | Tests all components, config, language detection, Redis, Celery |
+| `./scripts/run_tests.sh --quick` | **Essential tests only** | Regular validation, CI/CD | Skips API connections, focuses on core functionality |
+| `./scripts/run_tests.sh --component` | Component testing only | Development and debugging | Tests imports, log handling, file operations |
+| `./scripts/run_tests.sh --config` | Configuration validation | After config changes | Validates JSON structure, required fields, Iraq dual-language format |
+| `./scripts/run_tests.sh --language` | Language detection tests | Test heuristic detection | Arabic/English detection without OpenAI calls |
+| `./scripts/run_tests.sh --processing` | Message processing tests | Test dual-language logic | Iraq keyword matching, AI toggle, translation |
+
+#### Legacy Testing & Validation Tools  
 | Script | Purpose | When to Use | Key Features |
 |--------|---------|-------------|--------------|
 | `tests/validate_telegram_config.py` | **Telegram credential validator** | Before authentication, credential issues | Network tests, credential validation, interactive updates |
 | `tests/test_translation.py` | Translation system testing | Verify OpenAI integration | Test language detection and translation |
 | `tests/test_components.py` | Component testing | Development and debugging | Individual component validation |
 | `tests/test_message_fetch.py` | **Periodic message fetching test** | Verify 3-minute fetch intervals | Tests new periodic fetching with age filtering |
-| `tests/test_async_fix.py` | Async event loop testing | Debug asyncio/Celery conflicts | Tests lazy client initialization |
-| `tests/debug_message_ages.py` | Message age debugging | Debug why no new messages processed | Analyzes message timestamps vs age cutoff |
+| `tests/test_language_detection.py` | **Heuristic language detection** | Test without OpenAI | Tests Arabic/English detection using word patterns |
 
 **Most Common Usage:**
-- **Verify setup:** `./scripts/verify_setup.sh` (recommended first step)
 - **First time:** `./scripts/setup.sh` (includes config + Telegram auth)
-- **After restart:** `./scripts/quick_start.sh` (auto-detects auth if needed)
+- **After restart:** `./scripts/quick_start.sh` (includes automatic comprehensive testing)
+- **Manual testing:** `./scripts/run_tests.sh --quick` (when needed for validation)
 - **Check status:** `./scripts/status.sh`
-- **Test message fetch:** `python3 tests/test_message_fetch.py` (verify periodic fetching works)
+- **Test specific features:** Use individual `--component`, `--config`, etc. flags
 
 ### Manual Deployment
 

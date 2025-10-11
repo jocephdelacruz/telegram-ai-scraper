@@ -411,13 +411,21 @@ case "${1:-deploy}" in
             
             # Flower is already started in start_all_workers function
 
-            # Option to run tests
+            # Option to run tests (only if not called from quick_start.sh)
             echo ""
-            read -p "Run connection tests? (y/n): " -n 1 -r
-            echo ""
-            if [[ $REPLY =~ ^[Yy]$ ]]; then
-                print_status "Running connection tests..."
-                python3 src/core/main.py --mode test
+            if [[ "${CALLED_FROM_QUICK_START:-}" == "true" ]]; then
+                print_status "Skipping test prompt (tests already run by quick_start.sh)"
+            else
+                echo "Note: If you ran quick_start.sh, comprehensive tests were already executed."
+                read -p "Run comprehensive system tests? (y/n): " -n 1 -r
+                echo ""
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    print_status "Running comprehensive system tests..."
+                    ./scripts/run_tests.sh --quick
+                    if [ $? -ne 0 ]; then
+                        print_warning "Some tests failed. System may still be functional."
+                    fi
+                fi
             fi
 
             # Option to start monitoring
@@ -557,6 +565,9 @@ case "${1:-deploy}" in
         echo "  $0 stop --force # Force stop immediately"
         echo "  $0 status     # Check status"
         echo "  $0 logs       # View logs"
+        echo ""
+        echo "Note: If called from quick_start.sh, comprehensive tests are automatically"
+        echo "      run by quick_start.sh to avoid redundancy."
         ;;
 esac
 
