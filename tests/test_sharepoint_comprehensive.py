@@ -198,7 +198,7 @@ class ComprehensiveSharePointTestSuite:
             self.print_test_result("Test Sheet Cleanup", "FAIL", str(e))
             return False
             
-    def create_test_message_data(self, is_significant=True, message_id=None, test_channels=False):
+    def create_test_message_data(self, is_significant=True, message_id=None, test_channels=False, test_authors=False):
         """Create comprehensive test message data with various scenarios"""
         if not message_id:
             message_id = int(time.time())
@@ -212,6 +212,13 @@ class ComprehensiveSharePointTestSuite:
         else:
             channel = '@test_channel'
         
+        # Test different author formats if requested (for Excel escaping validation)
+        if test_authors:
+            authors = ['@test_author', '@author_with_underscore', '@123author', '@AUTHOR_CAPS']
+            author = authors[message_id % len(authors)]
+        else:
+            author = f'Test User {message_id}'
+        
         # Create message data with all expected fields
         message_data = {
             'id': message_id,
@@ -220,7 +227,7 @@ class ComprehensiveSharePointTestSuite:
             'Country': 'Iraq',
             'Date': datetime.now().strftime('%Y-%m-%d'),
             'Time': datetime.now().strftime('%H:%M:%S'),
-            'Author': f'Test User {message_id}',
+            'Author': author,  # This will test the Author Excel formula fix
             'Message_Text': f'Test {category.lower()} message for comprehensive SharePoint validation #{message_id}',
             'AI_Category': category,
             'AI_Reasoning': f'Test message classified as {category.lower()} for comprehensive testing',
@@ -496,10 +503,10 @@ class ComprehensiveSharePointTestSuite:
         try:
             excel_fields = self.config.get('TELEGRAM_EXCEL_FIELDS', [])
             
-            # Test data writing to test sheets with different channel formats
+            # Test data writing to test sheets with different channel and author formats
             test_cases = [
-                {'sheet_type': 'significant', 'sheet_name': self.TEST_SHEETS['significant'], 'significant': True, 'channel': '@wa3ediq'},
-                {'sheet_type': 'trivial', 'sheet_name': self.TEST_SHEETS['trivial'], 'significant': False, 'channel': '@test_channel_underscore'}
+                {'sheet_type': 'significant', 'sheet_name': self.TEST_SHEETS['significant'], 'significant': True, 'channel': '@wa3ediq', 'author': '@test_author'},
+                {'sheet_type': 'trivial', 'sheet_name': self.TEST_SHEETS['trivial'], 'significant': False, 'channel': '@test_channel_underscore', 'author': '@author_underscore'}
             ]
             
             for case in test_cases:
@@ -507,6 +514,7 @@ class ComprehensiveSharePointTestSuite:
                 sheet_type = case['sheet_type']
                 is_significant = case['significant']
                 test_channel = case['channel']
+                test_author = case['author']
                 
                 # Create test message
                 message_id = f"{sheet_type}_{int(time.time())}"
@@ -515,6 +523,7 @@ class ComprehensiveSharePointTestSuite:
                     message_id=message_id
                 )
                 test_message['Channel'] = test_channel
+                test_message['Author'] = test_author
                 
                 self.print_test_result(f"Test Data - {sheet_name}", "INFO", 
                                      f"Message ID: {message_id}, Channel: {test_channel}")
@@ -575,8 +584,8 @@ class ComprehensiveSharePointTestSuite:
             # For safety, we'll test the functions used by Celery tasks
             # but write to test sheets instead of production sheets
             test_cases = [
-                {'significant': True, 'channel': '@celery_test_sig', 'sheet': self.TEST_SHEETS['significant']},
-                {'significant': False, 'channel': '@celery_test_triv', 'sheet': self.TEST_SHEETS['trivial']}
+                {'significant': True, 'channel': '@celery_test_sig', 'author': '@celery_author_sig', 'sheet': self.TEST_SHEETS['significant']},
+                {'significant': False, 'channel': '@celery_test_triv', 'author': '@celery_author_triv', 'sheet': self.TEST_SHEETS['trivial']}
             ]
             
             excel_fields = self.config.get('TELEGRAM_EXCEL_FIELDS', [])
@@ -584,6 +593,7 @@ class ComprehensiveSharePointTestSuite:
             for case in test_cases:
                 is_significant = case['significant']
                 test_channel = case['channel']
+                test_author = case['author']
                 test_sheet = case['sheet']
                 category = "Significant" if is_significant else "Trivial"
                 
@@ -594,9 +604,10 @@ class ComprehensiveSharePointTestSuite:
                     message_id=message_id
                 )
                 message_data['Channel'] = test_channel
+                message_data['Author'] = test_author
                 
                 self.print_test_result(f"Celery Test Setup - {category}", "INFO", 
-                                     f"Message: {message_id}, Channel: {test_channel}")
+                                     f"Message: {message_id}, Channel: {test_channel}, Author: {test_author}")
                 
                 # Simulate the Celery task logic but use test sheet
                 try:
