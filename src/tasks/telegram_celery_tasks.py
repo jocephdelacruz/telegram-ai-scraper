@@ -304,6 +304,12 @@ def save_to_sharepoint(self, message_data, config, country_code):
                 value = f"'{value}"
                 LOGGER.writeLog(f"Applied Excel escaping to channel: {message_data.get(field, '')} → {value}")
             
+            # Apply Excel formula escaping for Author field to prevent #NAME? errors
+            if field == 'Author' and isinstance(value, str) and value.startswith('@'):
+                # Add single quote prefix to prevent Excel from treating as formula/reference
+                value = f"'{value}"
+                LOGGER.writeLog(f"Applied Excel escaping to author: {message_data.get(field, '')} → {value}")
+            
             filtered_message_data[field] = value
         
         LOGGER.writeLog(f"Filtered message data - Original fields: {len(message_data)}, Filtered fields: {len(filtered_message_data)}")
@@ -383,7 +389,16 @@ def save_to_csv_backup(self, message_data, config):
         filtered_message_data = {}
         for field in excel_fields:
             # Use the field value if available, otherwise use empty string
-            filtered_message_data[field] = message_data.get(field, '')
+            value = message_data.get(field, '')
+            
+            # Convert newlines to <br> tags for CSV storage to prevent multi-line entries
+            if isinstance(value, str) and field in ['Message_Text', 'Original_Text']:
+                # Replace various types of newlines with <br> tags
+                value = value.replace('\r\n', '<br>').replace('\n', '<br>').replace('\r', '<br>')
+                if value != message_data.get(field, ''):
+                    LOGGER.writeLog(f"CSV newline conversion applied to field '{field}': {len(value.split('<br>'))-1} newlines converted")
+            
+            filtered_message_data[field] = value
         
         LOGGER.writeLog(f"CSV write - Original fields: {len(message_data)}, Filtered fields: {len(filtered_message_data)}")
         
