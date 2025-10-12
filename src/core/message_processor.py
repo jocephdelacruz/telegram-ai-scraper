@@ -67,7 +67,7 @@ class MessageProcessor:
                 has_arabic_chars = any('\u0600' <= char <= '\u06FF' for char in text)
                 has_latin_chars = any('a' <= char.lower() <= 'z' for char in text)
                 
-                if has_arabic_chars and not has_latin_chars:
+                if has_arabic_chars:
                     return 'arabic'
                 elif has_latin_chars and not has_arabic_chars:
                     return 'english'
@@ -226,16 +226,16 @@ class MessageProcessor:
                 else:
                     # Default to significant if AI is disabled
                     LOGGER.writeLog(f'MessageProcessor: AI disabled, defaulting to significant for mixed keywords')
-                    return True, matched_significant, "keyword_significant", translation_info
+                    return True, matched_significant, "list of SIGNIFICANT keywords", translation_info
             
             elif matched_significant and not matched_trivial:
                 LOGGER.writeLog(f'MessageProcessor: Message classified as Significant by keywords: {matched_significant}')
-                return True, matched_significant, "keyword_significant", translation_info
-            
+                return True, matched_significant, "list of SIGNIFICANT keywords", translation_info
+
             elif matched_trivial and not matched_significant:
                 LOGGER.writeLog(f'MessageProcessor: Message classified as Trivial by keywords: {matched_trivial}')
-                return False, matched_trivial, "keyword_trivial", translation_info
-            
+                return False, matched_trivial, "list of TRIVIAL keywords", translation_info
+
             else:
                 # No keywords matched
                 LOGGER.writeLog(f'MessageProcessor: No keywords matched')
@@ -244,7 +244,7 @@ class MessageProcessor:
                     return self._analyzeWithAI(analysis_text, sig_keywords, triv_keywords, country_config, translation_info)
                 else:
                     LOGGER.writeLog(f'MessageProcessor: AI disabled, defaulting to trivial for unmatched message')
-                    return False, [], "no_match_trivial", translation_info
+                    return False, [], "no matches on any keyword list", translation_info
                     
         except Exception as e:
             LOGGER.writeLog(f'MessageProcessor: isMessageSignificant - Exception: {e}')
