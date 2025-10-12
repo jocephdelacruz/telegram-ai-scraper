@@ -78,10 +78,22 @@ class TelegramAIScraper:
                 raise Exception(f"Failed to load configuration from {config_path}")
             
             LOGGER.writeLog(f"Configuration loaded from: {config_path}")
+            
             LOGGER.writeLog("TelegramAIScraper initialized successfully")
             
         except Exception as e:
             LOGGER.writeLog(f"Failed to initialize TelegramAIScraper: {e}")
+            # Send critical exception to admin if possible
+            try:
+                from src.integrations.teams_utils import send_critical_exception
+                send_critical_exception(
+                    "InitializationError",
+                    str(e),
+                    "TelegramAIScraper.__init__",
+                    additional_context={"config_file": config_file}
+                )
+            except:
+                pass  # If admin notification fails, continue
             raise
 
 
@@ -246,10 +258,39 @@ class TelegramAIScraper:
                 print("SharePoint not fully configured, skipping SharePoint integration")
                 LOGGER.writeLog("SharePoint not configured, skipping SharePoint integration")
 
+            # Send startup notification to admin
+            try:
+                from src.integrations.teams_utils import send_system_startup
+                components_started = []
+                if self.openai_processor:
+                    components_started.append("OpenAI Processor")
+                if self.telegram_scraper:
+                    components_started.append("Telegram Scraper")
+                if self.teams_notifier:
+                    components_started.append("Teams Notifier")
+                components_started.append("Admin Notifier")
+                
+                send_system_startup(components_started)
+            except Exception as e:
+                LOGGER.writeLog(f"Failed to send startup notification: {e}")
+
             return True
 
         except Exception as e:
             LOGGER.writeLog(f"Error initializing components: {e}")
+            
+            # Send critical exception to admin
+            try:
+                from src.integrations.teams_utils import send_critical_exception
+                send_critical_exception(
+                    "ComponentInitializationError",
+                    str(e),
+                    "TelegramAIScraper.initialize_components",
+                    additional_context={"test_mode": test_mode}
+                )
+            except Exception as admin_error:
+                LOGGER.writeLog(f"Failed to send component initialization error to admin: {admin_error}")
+            
             return False
 
 
@@ -315,6 +356,23 @@ class TelegramAIScraper:
                     f"Error queuing message from {message_data.get('Channel', 'Unknown')}: {e}",
                     {"Message_ID": message_data.get('Message_ID', 'Unknown')}
                 )
+            
+            # Send critical exception to admin if it's a serious error
+            if self.stats['errors'] % 10 == 0:  # Every 10th error to avoid spam
+                try:
+                    from src.integrations.teams_utils import send_critical_exception
+                    send_critical_exception(
+                        "MessageHandlingError",
+                        str(e),
+                        "TelegramAIScraper.handle_new_message",
+                        additional_context={
+                            "message_id": message_data.get('Message_ID', 'unknown'),
+                            "channel": message_data.get('Channel', 'unknown'),
+                            "total_errors": self.stats['errors']
+                        }
+                    )
+                except Exception as admin_error:
+                    LOGGER.writeLog(f"Failed to send message handling error to admin: {admin_error}")
 
 
     async def cleanup_completed_tasks(self):
@@ -451,6 +509,19 @@ class TelegramAIScraper:
 
         except Exception as e:
             LOGGER.writeLog(f"Error in monitoring: {e}")
+            
+            # Send critical exception to admin
+            try:
+                from src.integrations.teams_utils import send_critical_exception
+                send_critical_exception(
+                    "MonitoringError",
+                    str(e),
+                    "TelegramAIScraper.start_monitoring",
+                    additional_context={"channels_count": len(channels) if 'channels' in locals() else 0}
+                )
+            except Exception as admin_error:
+                LOGGER.writeLog(f"Failed to send monitoring error to admin: {admin_error}")
+            
             return False
 
 
@@ -477,6 +548,20 @@ class TelegramAIScraper:
                         "Runtime": str(runtime)
                     }
                 )
+            
+            # Send admin shutdown notification
+            try:
+                from src.integrations.teams_utils import send_system_shutdown
+                cleanup_performed = True
+                if self.sharepoint_processor:
+                    self.sharepoint_processor.closeExcelSession()
+                
+                send_system_shutdown(
+                    reason="Graceful shutdown requested",
+                    cleanup_performed=cleanup_performed
+                )
+            except Exception as admin_error:
+                LOGGER.writeLog(f"Failed to send shutdown notification to admin: {admin_error}")
 
             # Close SharePoint session
             if self.sharepoint_processor:
@@ -490,6 +575,17 @@ class TelegramAIScraper:
 
         except Exception as e:
             LOGGER.writeLog(f"Error during shutdown: {e}")
+            
+            # Send critical exception to admin
+            try:
+                from src.integrations.teams_utils import send_critical_exception
+                send_critical_exception(
+                    "ShutdownError",
+                    str(e),
+                    "TelegramAIScraper.stop"
+                )
+            except Exception as admin_error:
+                LOGGER.writeLog(f"Failed to send shutdown error to admin: {admin_error}")
 
 
     def get_stats(self):
@@ -562,6 +658,21 @@ async def main():
                 LOGGER.writeLog(f"Teams connection test: {'SUCCESS' if teams_test else 'FAILED'}")
             else:
                 print("Teams notifier not configured, skipping test")
+            
+            # Test Admin Teams connection
+            try:
+                from src.integrations.teams_utils import get_admin_notifier
+                admin_notifier = get_admin_notifier()
+                if admin_notifier:
+                    print("Testing Admin Teams connection...")
+                    admin_test = admin_notifier.test_admin_connection()
+                    print(f"Admin Teams connection test: {'SUCCESS' if admin_test else 'FAILED'}")
+                    LOGGER.writeLog(f"Admin Teams connection test: {'SUCCESS' if admin_test else 'FAILED'}")
+                else:
+                    print("Admin Teams notifier not configured, skipping test")
+            except Exception as e:
+                print(f"Error testing admin Teams connection: {e}")
+                LOGGER.writeLog(f"Error testing admin Teams connection: {e}")
             
             # Test Telegram connection
             print("Testing Telegram connection...")

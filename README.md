@@ -65,6 +65,8 @@ Edit `config.json` with your credentials and preferences:
 ### Required Settings
 
 - `TEAMS_SENDER_NAME`: System identifier shown in Teams notifications (e.g., "Aldebaran Scraper")
+- `TEAMS_ADMIN_WEBHOOK`: Microsoft Teams webhook URL for admin alerts and system notifications
+- `TEAMS_ADMIN_CHANNEL`: Name of the admin Teams channel (e.g., "Admin Alerts")
 - `OPEN_AI_KEY`: Your OpenAI API key
 - `TELEGRAM_CONFIG`: Telegram API credentials and periodic fetch configuration
   - `FETCH_INTERVAL_SECONDS`: How often to check for new messages (default: 180 = 3 minutes)
@@ -74,6 +76,77 @@ Edit `config.json` with your credentials and preferences:
 - `COUNTRIES`: Country-specific configurations with channels, Teams webhooks, and SharePoint settings
 - `MESSAGE_FILTERING`: Keywords that determine message significance
 - `MS_SHAREPOINT_ACCESS`: Base SharePoint credentials
+
+### Admin Teams Channel Integration
+
+The system includes a **global admin Teams channel** for critical system monitoring and alerting. This channel uses a self-contained notification system that automatically loads configuration and sends alerts from anywhere in the codebase without requiring configuration parameter passing.
+
+**Key Features:**
+- **Global Admin Notifier**: Automatically loads configuration and provides system-wide admin notifications
+- **Convenient Functions**: Simple functions like `send_critical_exception()` and `send_service_failure()` that can be called from any module
+- **Intelligent Error Detection**: Automatically detects and reports various types of system issues
+- **No Configuration Coupling**: Classes no longer need config parameters just for admin notifications
+
+#### What Gets Reported
+
+- **Critical Exceptions**: All unhandled exceptions from core services and integrations
+- **Service Failures**: When key services (Telegram API, SharePoint, OpenAI) fail to operate
+- **Celery Task Failures**: When background tasks fail after all retries are exhausted
+- **System Startup/Shutdown**: When the system starts or stops, with component status
+- **Configuration Errors**: Invalid configuration files or missing settings
+- **Resource Alerts**: When system resources (CPU, memory, disk) exceed thresholds
+
+#### Admin Channel Configuration
+
+```json
+{
+  "TEAMS_ADMIN_WEBHOOK": "https://your-tenant.webhook.office.com/webhookb2/...",
+  "TEAMS_ADMIN_CHANNEL": "Admin Alerts"
+}
+```
+
+#### Usage Examples
+
+```python
+# From anywhere in the codebase, simply import and use:
+from src.integrations.teams_utils import send_critical_exception, send_service_failure
+
+# Send critical exception alert
+send_critical_exception(
+    "DatabaseError", 
+    "Connection to database failed", 
+    "my_module.py"
+)
+
+# Send service failure alert
+send_service_failure(
+    "OpenAI API", 
+    "API quota exceeded", 
+    impact_level="HIGH"
+)
+```
+
+#### Benefits of Global Admin Channel
+
+- **Project-Wide Monitoring**: Unlike country-specific channels, this monitors the entire system
+- **Simplified Architecture**: No need to pass config objects just for admin notifications
+- **Early Problem Detection**: Get notified immediately when issues occur
+- **Intelligent Alerting**: Prevents spam by batching similar errors and using thresholds
+- **Rich Context**: Detailed error information including stack traces and system context
+- **Self-Contained**: Automatically loads configuration when needed
+
+#### Testing Admin Teams Connection
+
+```bash
+# Test comprehensive admin Teams connectivity (includes both global functions and direct methods)
+python3 tests/test_admin_teams_connection.py
+
+# Or run as part of full test suite
+python3 scripts/run_tests.py --admin-teams
+
+# Quick test of specific functions
+python3 -c "from src.integrations.teams_utils import send_critical_exception; send_critical_exception('Test', 'Quick test', 'console')"
+```
 
 ### Multi-Country Features
 

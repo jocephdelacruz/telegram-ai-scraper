@@ -5,6 +5,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 import requests                  # To work on API Requests
 from src.core import log_handling as lh         # My custom class for log handling
 
+
 from msal import ConfidentialClientApplication
 
 import string                    # Used in getTableRangeFromListOfDict 
@@ -22,6 +23,8 @@ class SharepointProcessor:
    sessionID = ""
    
    def __init__(self, clientID, clientSecret, tenantID, spSite, siteName, filePath):
+      self._error_count = 0
+      
       self.token = self.getAccessToken(clientID, clientSecret, tenantID)
       #print(f"token = {self.token}")
       self.siteID, self.fileID = self.getFileAndSiteIDs(spSite, siteName, filePath)
@@ -32,6 +35,24 @@ class SharepointProcessor:
       
       if self.sessionID == "":
          LOGGER.writeLog(f"Failed SharepointProcessor initialization")
+         
+         # Send critical exception to admin for initialization failure
+         try:
+            from .teams_utils import send_critical_exception
+            send_critical_exception(
+               "SharePointInitializationError",
+               "Failed to initialize SharePoint processor",
+               "SharepointProcessor.__init__",
+               additional_context={
+                  "site_name": siteName if 'siteName' in locals() else None,
+                  "file_path": filePath if 'filePath' in locals() else None,
+                  "has_token": self.token != "",
+                  "has_site_id": self.siteID != "",
+                  "has_file_id": self.fileID != ""
+               }
+            )
+         except Exception as admin_error:
+            LOGGER.writeLog(f"Failed to send SharePoint initialization error to admin: {admin_error}")
 
 
    # Authenticate and get a Microsoft Graph API token
@@ -46,6 +67,22 @@ class SharepointProcessor:
             raise Exception("Authentication failed:", token.get("error_description"))
       except Exception as e:
          LOGGER.writeLog(f"Failed to acquire access token - {e}")
+         
+         # Send critical exception to admin for token acquisition failure
+         try:
+            from .teams_utils import send_critical_exception
+            send_critical_exception(
+               "SharePointAuthError",
+               str(e),
+               "SharepointProcessor.getAccessToken",
+               additional_context={
+                  "client_id": clientID[:8] + "***" if clientID else None,
+                  "tenant_id": tenantID[:8] + "***" if tenantID else None
+               }
+            )
+         except Exception as admin_error:
+            LOGGER.writeLog(f"Failed to send SharePoint auth error to admin: {admin_error}")
+         
          return ""
 
 
@@ -157,6 +194,26 @@ class SharepointProcessor:
          return response.status_code == 200
       except Exception as e:
          LOGGER.writeLog(f"Failed to add values in {range_address} of excel file {self.fileID} - {e}")
+         self._error_count += 1
+         
+         # Send critical exception to admin for data update failures (data loss concern)
+         if self._error_count % 5 == 0:  # Every 5th error to avoid spam
+            try:
+               from .teams_utils import send_critical_exception
+               send_critical_exception(
+                  "SharePointUpdateError",
+                  str(e),
+                  "SharepointProcessor.updateRange",
+                  additional_context={
+                     "worksheet": worksheet_name,
+                     "range": range_address,
+                     "data_rows": len(values) if values else 0,
+                     "total_errors": self._error_count
+                  }
+               )
+            except Exception as admin_error:
+               LOGGER.writeLog(f"Failed to send SharePoint update error to admin: {admin_error}")
+         
          return False
 
 

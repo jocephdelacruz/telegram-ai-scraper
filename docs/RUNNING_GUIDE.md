@@ -48,6 +48,9 @@ The setup script will guide you through configuration:
 **Required Configuration Updates**:
 ```json
 {
+   "TEAMS_SENDER_NAME": "Aldebaran Scraper",
+   "TEAMS_ADMIN_WEBHOOK": "https://your-admin-teams-webhook-url-here",
+   "TEAMS_ADMIN_CHANNEL": "Admin Alerts",
    "OPEN_AI_KEY": "sk-your-actual-openai-key-here",
    
    "TELEGRAM_CONFIG": {
@@ -120,6 +123,7 @@ This will test:
 # Test specific components
 ./scripts/run_tests.sh --sharepoint    # SharePoint integration tests (PRODUCTION SAFE)
 ./scripts/run_tests.sh --csv           # CSV storage tests (PRODUCTION SAFE)  
+./scripts/run_tests.sh --admin-teams   # Admin Teams webhook connectivity tests
 ./scripts/run_tests.sh --config        # Configuration validation
 ./scripts/run_tests.sh --quick         # Essential tests only
 ```
@@ -145,6 +149,34 @@ The SharePoint tests now include:
 # Start real-time monitoring
 ./scripts/run_app.sh monitor
 ```
+
+### Step 3.5: Admin Teams Monitoring Setup
+
+The system includes a centralized admin Teams channel for critical alerts and system monitoring. This is separate from country-specific notification channels.
+
+**Admin Teams Channel Benefits**:
+- **System-Wide Monitoring**: Monitors the entire application, not just individual countries
+- **Critical Exception Alerts**: Get notified immediately when core services encounter errors
+- **Service Failure Notifications**: Alerts for Telegram API failures, SharePoint issues, OpenAI errors
+- **Celery Task Monitoring**: Notifications when background tasks fail after retries
+- **Resource Monitoring**: Alerts when system resources exceed thresholds
+
+**Testing Admin Teams Connection**:
+```bash
+# Test admin Teams webhook connectivity
+python3 tests/test_admin_teams_connection.py
+
+# Or test as part of full suite
+python3 scripts/run_tests.py --admin-teams
+```
+
+**Expected Admin Notifications**:
+- System startup/shutdown messages
+- Critical exceptions with stack traces
+- Service failures with recovery suggestions
+- Celery worker status changes
+- Configuration errors
+- Resource threshold alerts
 
 ### Step 4: Monitor the System
 

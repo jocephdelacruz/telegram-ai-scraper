@@ -5,6 +5,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from openai import OpenAI     # import the OpenAI Python library for calling the OpenAI API
 from src.core import log_handling as lh     # My custom class for log handling
 
+
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 LOG_FILE = os.path.join(PROJECT_ROOT, "logs", "openai.log")
 LOG_TZ = "Asia/Manila"
@@ -24,6 +25,8 @@ class OpenAIProcessor:
 
 
    def __init__(self, key=""):
+      self._error_count = 0
+      
       try:
          if key != "":
             #self.openai_client = OpenAI()      # This can be used if I'll set first the OPENAI_API_KEY env variable in the server
@@ -31,8 +34,33 @@ class OpenAIProcessor:
             # List available models as a test request -- used to test connection
          else:
             LOGGER.writeLog('OpenAIProcessor: init - Failed to retrieve OPENAI_API_KEY')
+            
+            # Send critical exception to admin for missing API key
+            try:
+               from .teams_utils import send_configuration_error
+               send_configuration_error(
+                  "config.json",
+                  "OpenAI API key not provided or empty",
+                  "Add valid OPEN_AI_KEY to config.json"
+               )
+            except Exception as admin_error:
+               LOGGER.writeLog(f"Failed to send OpenAI config error to admin: {admin_error}")
+                  
       except Exception as e:
          LOGGER.writeLog(f'OpenAIProcessor: init - Exception: {e}')
+         
+         # Send critical exception to admin for initialization failure
+         try:
+            from .teams_utils import send_critical_exception
+            send_critical_exception(
+               "OpenAIInitializationError",
+               str(e),
+               "OpenAIProcessor.__init__",
+               additional_context={"has_api_key": key != ""}
+            )
+         except Exception as admin_error:
+            LOGGER.writeLog(f"Failed to send OpenAI initialization error to admin: {admin_error}")
+               
       self.apikey = key
 
 
@@ -109,6 +137,25 @@ class OpenAIProcessor:
          
       except Exception as e:
          LOGGER.writeLog(f'OpenAIProcessor: detectLanguageAndTranslate - Exception: {e}')
+         self._error_count += 1
+         
+         # Send critical exception to admin for OpenAI API failures
+         if self._error_count % 10 == 0:  # Every 10th error
+            try:
+               from .teams_utils import send_critical_exception
+               send_critical_exception(
+                  "OpenAIAPIError",
+                  str(e),
+                  "OpenAIProcessor.detectLanguageAndTranslate",
+                  additional_context={
+                     "text_length": len(text) if text else 0,
+                     "total_errors": self._error_count,
+                     "model": self.openai_model
+                  }
+               )
+            except Exception as admin_error:
+               LOGGER.writeLog(f"Failed to send OpenAI API error to admin: {admin_error}")
+         
          # On error, assume English and return original text
          return True, text, "Unknown"
 
@@ -191,6 +238,23 @@ class OpenAIProcessor:
          
       except Exception as e:
          LOGGER.writeLog(f'OpenAIProcessor: _analyzeWithAI - Exception: {e}')
+         
+         # Send critical exception to admin for AI analysis failures
+         try:
+            from .teams_utils import send_critical_exception
+            send_critical_exception(
+               "OpenAIAnalysisError",
+               str(e),
+               "OpenAIProcessor._analyzeWithAI",
+               additional_context={
+                  "message_length": len(message) if message else 0,
+                  "significant_keywords_count": len(significant_keywords) if significant_keywords else 0,
+                  "model": self.openai_model
+               }
+            )
+         except Exception as admin_error:
+            LOGGER.writeLog(f"Failed to send OpenAI analysis error to admin: {admin_error}")
+         
          return False, [], "ai_error"
 
 

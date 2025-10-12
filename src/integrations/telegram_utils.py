@@ -10,6 +10,7 @@ import asyncio
 from src.core import log_handling as lh
 from .telegram_session_manager import TelegramSessionManager, TelegramRateLimitError, TelegramSessionError, TelegramAuthError
 
+
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 LOG_FILE = os.path.join(PROJECT_ROOT, "logs", "telegram.log")
 LOG_TZ = "Asia/Manila"
@@ -32,6 +33,7 @@ class TelegramScraper:
             self.api_hash = api_hash
             self.phone_number = phone_number
             self.session_file = session_file
+            self._error_count = 0
             
             # Use advanced session manager instead of direct client management
             self.session_manager = TelegramSessionManager(api_id, api_hash, phone_number, session_file)
@@ -41,6 +43,22 @@ class TelegramScraper:
             LOGGER.writeLog("TelegramScraper initialized successfully with advanced session management")
         except Exception as e:
             LOGGER.writeLog(f"TelegramScraper initialization failed: {e}")
+            
+            # Send critical exception to admin
+            try:
+                from .teams_utils import send_critical_exception
+                send_critical_exception(
+                    "TelegramInitializationError",
+                    str(e),
+                    "TelegramScraper.__init__",
+                    additional_context={
+                        "api_id": api_id,
+                        "phone_number": phone_number[:3] + "***" if phone_number else None
+                    }
+                )
+            except Exception as admin_error:
+                LOGGER.writeLog(f"Failed to send Telegram initialization error to admin: {admin_error}")
+            
             raise
 
     async def _ensure_client(self):
@@ -65,17 +83,68 @@ class TelegramScraper:
         except TelegramRateLimitError as e:
             LOGGER.writeLog(f"🚫 TELEGRAM RATE LIMITED: {e}")
             LOGGER.writeLog("⚠️  System will pause until rate limit expires. Use 'python3 tests/check_telegram_status.py' to monitor.")
+            
+            # Send rate limit alert to admin
+            try:
+                from .teams_utils import send_service_failure
+                send_service_failure(
+                    "Telegram API",
+                    f"Rate limited: {str(e)}",
+                    impact_level="HIGH",
+                    recovery_action="Wait for rate limit to expire, then retry"
+                )
+            except Exception as admin_error:
+                LOGGER.writeLog(f"Failed to send rate limit error to admin: {admin_error}")
+            
             raise
         except TelegramSessionError as e:
             LOGGER.writeLog(f"🔐 SESSION ISSUE: {e}")
             LOGGER.writeLog("💡 Run 'python3 scripts/telegram_auth.py' to re-authenticate")
+            
+            # Send session error alert to admin
+            try:
+                from .teams_utils import send_service_failure
+                send_service_failure(
+                    "Telegram Session",
+                    f"Session authentication failed: {str(e)}",
+                    impact_level="HIGH",
+                    recovery_action="Run 'python3 scripts/telegram_auth.py' to re-authenticate"
+                )
+            except Exception as admin_error:
+                LOGGER.writeLog(f"Failed to send session error to admin: {admin_error}")
+            
             raise
         except TelegramAuthError as e:
-            LOGGER.writeLog(f"� AUTH ERROR: {e}")
+            LOGGER.writeLog(f"🚨 AUTH ERROR: {e}")
             LOGGER.writeLog("💡 Check your API credentials in config.json")
+            
+            # Send auth error alert to admin
+            try:
+                from .teams_utils import send_service_failure
+                send_service_failure(
+                    "Telegram Authentication",
+                    f"Auth error: {str(e)}",
+                    impact_level="CRITICAL",
+                    recovery_action="Check API credentials in config.json"
+                )
+            except Exception as admin_error:
+                LOGGER.writeLog(f"Failed to send auth error to admin: {admin_error}")
+            
             raise
         except Exception as e:
             LOGGER.writeLog(f"❌ Unexpected error starting client: {e}")
+            
+            # Send critical exception to admin
+            try:
+                from .teams_utils import send_critical_exception
+                send_critical_exception(
+                    "TelegramClientStartError",
+                    str(e),
+                    "TelegramScraper.start_client"
+                )
+            except Exception as admin_error:
+                LOGGER.writeLog(f"Failed to send client start error to admin: {admin_error}")
+            
             raise
 
 
@@ -217,6 +286,25 @@ class TelegramScraper:
             return messages
         except Exception as e:
             LOGGER.writeLog(f"Failed to get messages from {channel_username}: {e}")
+            self._error_count += 1
+            
+            # Send critical exception to admin for message retrieval failures
+            if self._error_count % 10 == 0:  # Every 10th error
+                try:
+                    from .teams_utils import send_critical_exception
+                    send_critical_exception(
+                        "TelegramMessageRetrievalError",
+                        str(e),
+                        "TelegramScraper.get_channel_messages",
+                        additional_context={
+                            "channel": channel_username,
+                            "limit": limit,
+                            "total_errors": self._error_count
+                        }
+                    )
+                except Exception as admin_error:
+                    LOGGER.writeLog(f"Failed to send message retrieval error to admin: {admin_error}")
+            
             return []
 
     async def parse_message(self, message, channel_username):
@@ -354,6 +442,21 @@ class TelegramScraper:
             
         except Exception as e:
             LOGGER.writeLog(f"Error starting channel monitoring: {e}")
+            
+            # Send critical exception to admin for monitoring failures
+            try:
+                from .teams_utils import send_critical_exception
+                send_critical_exception(
+                    "TelegramMonitoringError",
+                    str(e),
+                    "TelegramScraper.start_monitoring",
+                    additional_context={
+                        "channels": channels,
+                        "monitored_channels_count": len(self.monitored_channels)
+                    }
+                )
+            except Exception as admin_error:
+                LOGGER.writeLog(f"Failed to send monitoring error to admin: {admin_error}")
 
     async def get_channel_info(self, channel_username):
         """Get information about a channel"""

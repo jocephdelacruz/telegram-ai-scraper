@@ -27,6 +27,8 @@ class FileHandling:
             filename: Path to the file
         """
         self.filename = filename
+        self._error_count = 0
+        
         self.ensure_directory_exists()
 
 
@@ -39,6 +41,21 @@ class FileHandling:
                 get_logger().writeLog(f"Created directory: {directory}")
         except Exception as e:
             get_logger().writeLog(f"Error creating directory for {self.filename}: {e}")
+            
+            # Send critical exception to admin for directory creation failures
+            try:
+                from src.integrations.teams_utils import send_critical_exception
+                send_critical_exception(
+                    "DirectoryCreationError",
+                    str(e),
+                    "FileHandling.ensure_directory_exists",
+                    additional_context={
+                        "filename": self.filename,
+                        "directory": directory if 'directory' in locals() else None
+                    }
+                )
+            except Exception as admin_error:
+                get_logger().writeLog(f"Failed to send directory creation error to admin: {admin_error}")
 
 
     def write(self, content, overwrite=False):
@@ -95,6 +112,22 @@ class FileHandling:
                 return json.load(file)
         except Exception as e:
             get_logger().writeLog(f"Error reading JSON from {self.filename}: {e}")
+            
+            # Send critical exception to admin for JSON reading failures (config files are critical)
+            try:
+                from src.integrations.teams_utils import send_critical_exception
+                send_critical_exception(
+                    "JSONReadError",
+                    str(e),
+                    "FileHandling.read_json",
+                    additional_context={
+                        "filename": self.filename,
+                        "file_exists": os.path.exists(self.filename)
+                    }
+                )
+            except Exception as admin_error:
+                get_logger().writeLog(f"Failed to send JSON read error to admin: {admin_error}")
+            
             return None
 
 
@@ -152,6 +185,25 @@ class FileHandling:
             return True
         except Exception as e:
             get_logger().writeLog(f"Error appending to CSV {self.filename}: {e}")
+            self._error_count += 1
+            
+            # Send critical exception to admin for CSV write failures (data loss concern)
+            if self._error_count % 5 == 0:  # Every 5th error to avoid spam
+                try:
+                    from src.integrations.teams_utils import send_critical_exception
+                    send_critical_exception(
+                        "CSVWriteError",
+                        str(e),
+                        "FileHandling.append_to_csv",
+                        additional_context={
+                            "filename": self.filename,
+                            "data_count": len(data) if isinstance(data, list) else 1,
+                            "total_errors": self._error_count
+                        }
+                    )
+                except Exception as admin_error:
+                    get_logger().writeLog(f"Failed to send CSV write error to admin: {admin_error}")
+            
             return False
 
 

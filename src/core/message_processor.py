@@ -6,6 +6,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from src.core import log_handling as lh
 from src.integrations.openai_utils import OpenAIProcessor
 
+
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 LOG_FILE = os.path.join(PROJECT_ROOT, "logs", "telegram_tasks.log")
 LOG_TZ = "Asia/Manila"
@@ -106,6 +107,28 @@ class MessageProcessor:
                 
         except Exception as e:
             LOGGER.writeLog(f'MessageProcessor: detectLanguage - Exception: {e}')
+            
+            # Send critical exception to admin if language detection fails frequently
+            if not hasattr(self, '_language_detection_errors'):
+                self._language_detection_errors = 1
+            else:
+                self._language_detection_errors += 1
+                
+            if self._language_detection_errors % 50 == 0:  # Every 50 errors
+                try:
+                    from src.integrations.teams_utils import send_critical_exception
+                    send_critical_exception(
+                        "LanguageDetectionError",
+                        str(e),
+                        "MessageProcessor.detectLanguage",
+                        additional_context={
+                            "total_errors": self._language_detection_errors,
+                            "text_length": len(text) if text else 0
+                        }
+                    )
+                except Exception as admin_error:
+                    LOGGER.writeLog(f"Failed to send language detection error to admin: {admin_error}")
+            
             return 'unknown'
     
     def _isLikelyEnglish(self, text):
@@ -225,6 +248,23 @@ class MessageProcessor:
                     
         except Exception as e:
             LOGGER.writeLog(f'MessageProcessor: isMessageSignificant - Exception: {e}')
+            
+            # Send critical exception to admin for message processing errors
+            try:
+                from src.integrations.teams_utils import send_critical_exception
+                send_critical_exception(
+                    "MessageProcessingError",
+                    str(e),
+                    "MessageProcessor.isMessageSignificant",
+                    additional_context={
+                        "message_length": len(message) if message else 0,
+                        "use_ai": use_ai if 'use_ai' in locals() else None,
+                        "significant_keywords_count": len(significant_keywords) if significant_keywords else 0
+                    }
+                )
+            except Exception as admin_error:
+                LOGGER.writeLog(f"Failed to send message processing error to admin: {admin_error}")
+            
             return False, [], "error", {'is_english': True, 'original_language': 'Unknown', 'translated_text': None}
     
     def _analyzeWithAI(self, message, significant_keywords, trivial_keywords, country_config, translation_info):
@@ -258,4 +298,20 @@ class MessageProcessor:
             
         except Exception as e:
             LOGGER.writeLog(f'MessageProcessor: _analyzeWithAI - Exception: {e}')
+            
+            # Send critical exception to admin for AI analysis errors
+            try:
+                from src.integrations.teams_utils import send_critical_exception
+                send_critical_exception(
+                    "AIAnalysisError",
+                    str(e),
+                    "MessageProcessor._analyzeWithAI",
+                    additional_context={
+                        "message_length": len(message) if message else 0,
+                        "translation_required": translation_info.get('original_language', 'Unknown') != 'English'
+                    }
+                )
+            except Exception as admin_error:
+                LOGGER.writeLog(f"Failed to send AI analysis error to admin: {admin_error}")
+            
             return False, [], "ai_error", translation_info

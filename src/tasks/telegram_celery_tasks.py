@@ -177,6 +177,24 @@ def process_telegram_message(self, message_data, config):
         
     except Exception as e:
         LOGGER.writeLog(f"Error processing message {message_data.get('id', 'unknown')}: {e}")
+        
+        # Send critical exception to admin for Celery task failures
+        try:
+            admin_notifier = create_admin_notifier_from_config(config)
+            if admin_notifier:
+                retry_count = self.request.retries
+                max_retries = self.retry_kwargs.get('max_retries', 3)
+                
+                admin_notifier.send_celery_failure(
+                    task_name="process_telegram_message",
+                    task_id=str(self.request.id),
+                    failure_reason=str(e),
+                    retry_count=retry_count,
+                    max_retries=max_retries
+                )
+        except Exception as admin_error:
+            LOGGER.writeLog(f"Failed to send Celery task failure to admin: {admin_error}")
+        
         # Retry the task
         raise self.retry(exc=e)
 

@@ -1,4 +1,8 @@
 # Celery Configuration for Telegram AI Scraper
+import os
+
+# Project root directory
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Broker settings
 broker_url = 'redis://localhost:6379/0'  # Use Redis as message broker
@@ -147,3 +151,50 @@ task_queues = {
         'routing_key': 'monitoring',
     }
 }
+
+# Admin notification setup for Celery worker events
+def setup_admin_notifications():
+    """
+    Setup admin notifications for Celery worker events
+    This function should be called when initializing the Celery app
+    """
+    try:
+        from celery import signals
+        from src.integrations.teams_utils import send_system_startup, send_system_shutdown, send_celery_failure
+        
+        @signals.worker_ready.connect
+        def worker_ready_handler(sender=None, **kwargs):
+            """Called when a worker comes online"""
+            try:
+                send_system_startup(["Celery Worker"])
+            except Exception as e:
+                print(f"Failed to send worker ready notification: {e}")
+        
+        @signals.worker_shutdown.connect
+        def worker_shutdown_handler(sender=None, **kwargs):
+            """Called when a worker shuts down"""
+            try:
+                send_system_shutdown("Worker shutdown", cleanup_performed=True)
+            except Exception as e:
+                print(f"Failed to send worker shutdown notification: {e}")
+        
+        @signals.task_failure.connect
+        def task_failure_handler(sender=None, task_id=None, exception=None, einfo=None, **kwargs):
+            """Called when a task fails"""
+            try:
+                task_name = sender.name if sender else "Unknown Task"
+                send_celery_failure(
+                    task_name=task_name,
+                    task_id=task_id,
+                    failure_reason=str(exception) if exception else "Unknown error",
+                    retry_count=0,  # This will be updated by individual tasks
+                    max_retries=3
+                )
+            except Exception as e:
+                print(f"Failed to send task failure notification: {e}")
+                
+    except Exception as e:
+        print(f"Failed to setup admin notifications for Celery: {e}")
+
+# Call the setup function when this module is imported
+setup_admin_notifications()

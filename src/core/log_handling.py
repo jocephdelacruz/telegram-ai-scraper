@@ -9,6 +9,7 @@ class LogHandling:
   def __init__(self, fname = "_script.log", tz = ""):
     self.log_file = fname
     self.log_tz = tz
+    self._log_error_count = 0
 
 
   def writeLog(self, text):
@@ -31,6 +32,25 @@ class LogHandling:
       return True
     except Exception as e:
       print(f"Error writing to log file {self.log_file}: {e}")
+      self._log_error_count += 1
+      
+      # Send critical exception to admin for logging failures (system monitoring concern)
+      if self._log_error_count % 10 == 0:  # Every 10th error to avoid infinite loops
+        try:
+          from src.integrations.teams_utils import send_critical_exception
+          send_critical_exception(
+            "LogWriteError",
+            str(e),
+            "LogHandling.writeLog",
+            additional_context={
+              "log_file": self.log_file,
+              "total_log_errors": self._log_error_count,
+              "log_timezone": self.log_tz
+            }
+          )
+        except Exception as admin_error:
+          print(f"Failed to send log write error to admin: {admin_error}")
+      
       return False
 
 

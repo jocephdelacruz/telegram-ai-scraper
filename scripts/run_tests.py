@@ -361,6 +361,21 @@ class TestRunner:
             if debug_status == 'PASS':
                 print("   📊 Debug information collected successfully")
             
+    def test_admin_teams_connection(self):
+        """Test Admin Teams webhook connectivity"""
+        self.print_section("Admin Teams Connection Tests")
+        
+        status, details = self.run_python_test("test_admin_teams_connection.py", timeout=120)
+        self.print_result("Admin Teams Connection", status, details if status != 'PASS' else None)
+        
+        if status == 'PASS':
+            self.results['passed'] += 1
+        elif status == 'SKIP':
+            self.results['skipped'] += 1
+        else:
+            self.results['failed'] += 1
+            self.results['errors'].append(f"Admin Teams Connection: {details}")
+
     def test_api_connections(self):
         """Test API connections"""
         self.print_section("API Connection Tests")
@@ -557,6 +572,7 @@ class TestRunner:
         self.test_csv_storage()
         self.test_sharepoint_storage()
         self.test_celery_tasks()
+        self.test_admin_teams_connection()
         
         if not quick:
             # Extended tests (might require additional setup)
@@ -579,6 +595,7 @@ def main():
     parser.add_argument("--processing", action="store_true", help="Run only message processing tests")
     parser.add_argument("--csv", action="store_true", help="Run only CSV storage tests")
     parser.add_argument("--sharepoint", action="store_true", help="Run only SharePoint storage tests")
+    parser.add_argument("--admin-teams", action="store_true", help="Run only Admin Teams connection tests")
     
     args = parser.parse_args()
     
@@ -604,6 +621,9 @@ def main():
         return runner.generate_report()
     elif args.sharepoint:
         runner.test_sharepoint_storage()
+        return runner.generate_report()
+    elif args.admin_teams:
+        runner.test_admin_teams_connection()
         return runner.generate_report()
     else:
         return runner.run_all(quick=args.quick)

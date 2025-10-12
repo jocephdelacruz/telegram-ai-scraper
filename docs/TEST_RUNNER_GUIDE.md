@@ -42,6 +42,15 @@ The test runner system consists of several key components:
 
 # Test only message processing
 ./scripts/run_tests.sh --processing
+
+# Test only CSV storage
+./scripts/run_tests.sh --csv
+
+# Test only SharePoint storage
+./scripts/run_tests.sh --sharepoint
+
+# Test only admin Teams connectivity (consolidated global + direct tests)
+./scripts/run_tests.sh --admin-teams
 ```
 
 ## Integration with Existing Scripts
