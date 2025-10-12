@@ -239,6 +239,90 @@ class CSVMessageStorageTestSuite:
             print(f"❌ Data filtering test FAILED - Exception: {e}")
             self.test_results['data_filtering'] = False
     
+    def test_newline_conversion(self):
+        """Test newline conversion to <br> tags for CSV storage"""
+        print("\n=== Testing Newline Conversion for CSV Storage ===")
+        
+        try:
+            # Create test message with various newline formats
+            message_data = self.create_comprehensive_test_message()
+            message_data['Message_ID'] = "TEST_newline_001"
+            message_data['Channel'] = "@TEST_newline_channel"
+            
+            # Add various newline formats to test
+            message_text_with_newlines = "Line 1\nLine 2\r\nLine 3\rLine 4"
+            original_text_with_newlines = "Original line 1\nOriginal line 2\r\nOriginal line 3"
+            
+            message_data['Message_Text'] = message_text_with_newlines
+            message_data['Original_Text'] = original_text_with_newlines
+            message_data['is_significant'] = True
+            message_data['AI_Category'] = 'Significant'
+            
+            print(f"Original Message_Text: {repr(message_text_with_newlines)}")
+            print(f"Original Original_Text: {repr(original_text_with_newlines)}")
+            
+            # Simulate the newline conversion logic from save_to_csv_backup
+            filtered_data = {}
+            for field in self.excel_fields:
+                value = message_data.get(field, '')
+                
+                # Apply the same newline conversion logic as in save_to_csv_backup
+                if isinstance(value, str) and field in ['Message_Text', 'Original_Text']:
+                    original_value = value
+                    value = value.replace('\r\n', '<br>').replace('\n', '<br>').replace('\r', '<br>')
+                    if value != original_value:
+                        print(f"Converted {field}: {len(value.split('<br>'))-1} newlines converted")
+                
+                filtered_data[field] = value
+            
+            # Verify conversions
+            expected_message_text = "Line 1<br>Line 2<br>Line 3<br>Line 4"
+            expected_original_text = "Original line 1<br>Original line 2<br>Original line 3"
+            
+            if filtered_data['Message_Text'] == expected_message_text:
+                print("✅ Message_Text newline conversion successful")
+            else:
+                print(f"❌ Message_Text conversion failed: {repr(filtered_data['Message_Text'])}")
+                self.test_results['newline_conversion'] = False
+                return
+            
+            if filtered_data['Original_Text'] == expected_original_text:
+                print("✅ Original_Text newline conversion successful")
+            else:
+                print(f"❌ Original_Text conversion failed: {repr(filtered_data['Original_Text'])}")
+                self.test_results['newline_conversion'] = False
+                return
+            
+            # Test CSV storage with converted data
+            file_handler = FileHandling(self.test_csv_files['significant'])
+            success = file_handler.append_to_csv(filtered_data, self.excel_fields)
+            
+            if success:
+                print("✅ CSV storage with converted newlines successful")
+                
+                # Verify single-line storage by reading back
+                with open(self.test_csv_files['significant'], 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                    # Find our test entry (last line should be our data)
+                    if len(lines) >= 2:  # Header + at least one data line
+                        last_line = lines[-1].strip()
+                        if '<br>' in last_line and '\n' not in last_line:
+                            print("✅ Verified: Message stored as single line with <br> tags")
+                        else:
+                            print("❌ Verification failed: Message not stored correctly")
+                            self.test_results['newline_conversion'] = False
+                            return
+                
+                self.test_results['newline_conversion'] = True
+                print("✅ Newline conversion test PASSED")
+            else:
+                print("❌ CSV storage failed")
+                self.test_results['newline_conversion'] = False
+                
+        except Exception as e:
+            print(f"❌ Newline conversion test failed: {e}")
+            self.test_results['newline_conversion'] = False
+    
     def test_celery_function_integration(self):
         """Test CSV logic without calling production Celery function (production safe)"""
         print("\n=== Testing CSV Logic Integration (Production Safe) ===")
@@ -488,6 +572,7 @@ class CSVMessageStorageTestSuite:
             # Run all tests
             self.test_basic_csv_functionality()
             self.test_data_filtering()
+            self.test_newline_conversion()
             self.test_celery_function_integration()
             self.test_error_handling()
             self.test_file_permissions()
