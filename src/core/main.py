@@ -737,10 +737,10 @@ async def main():
                 # Clean up session safety record
                 safety.cleanup_session_access()
             except SessionSafetyError as e:
-                print("🚫 SESSION SAFETY ERROR for historical mode:")
+                print("�️ SESSION SAFETY PROTECTION for historical mode:")
                 print(str(e))
-                print("❌ Cannot run historical scraping - session conflict detected")
-                LOGGER.writeLog("Historical scraping aborted due to session safety check")
+                print("✅ Session conflict prevented - your phone stays connected!")
+                LOGGER.writeLog("Historical mode prevented due to session safety (workers running)")
             
         else:  # monitor mode
             # Session safety check for monitor mode
@@ -756,10 +756,10 @@ async def main():
                 # Clean up session safety record
                 safety.cleanup_session_access()
             except SessionSafetyError as e:
-                print("🚫 SESSION SAFETY ERROR for monitor mode:")
+                print("�️ SESSION SAFETY PROTECTION for monitor mode:")
                 print(str(e))
-                print("❌ Cannot start monitoring - session conflict detected")
-                LOGGER.writeLog("Monitoring aborted due to session safety check")
+                print("✅ Session conflict prevented - your phone stays connected!")
+                LOGGER.writeLog("Monitor mode prevented due to session safety (workers running)")
 
     except KeyboardInterrupt:
         LOGGER.writeLog("Received keyboard interrupt")

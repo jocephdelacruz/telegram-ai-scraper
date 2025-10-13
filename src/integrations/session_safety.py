@@ -57,10 +57,10 @@ class SessionSafetyManager:
         
         if workers_running:
             raise SessionSafetyError(
-                f"❌ UNSAFE: Celery workers are running and may be using the Telegram session!\n"
+                f"🛡️ PROTECTED: Celery workers are running - preventing session conflict\n"
                 f"   Active worker PIDs: {', '.join(worker_pids)}\n"
                 f"   \n"
-                f"   This {operation_type} could cause session invalidation.\n"
+                f"   Running {operation_type} now could cause session invalidation.\n"
                 f"   \n"
                 f"   Solutions:\n"
                 f"   1. Stop workers first: ./scripts/deploy_celery.sh stop\n"
@@ -76,7 +76,7 @@ class SessionSafetyManager:
                 with open(self.lock_file, 'r') as f:
                     lock_content = f.read().strip()
                 raise SessionSafetyError(
-                    f"❌ UNSAFE: Session lock file exists!\n"
+                    f"🛡️ PROTECTED: Session lock file exists - preventing conflict\n"
                     f"   Lock file: {self.lock_file}\n"
                     f"   Content: {lock_content}\n"
                     f"   \n"

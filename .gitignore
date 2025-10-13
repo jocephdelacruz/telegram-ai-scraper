@@ -6,4 +6,5 @@ logs/
 pids/
 *.sqlite3
 *.session
+*.session.lock
 flower

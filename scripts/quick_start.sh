@@ -5,12 +5,7 @@
 
 # Colors for output
 RED='\033[0;31m'
-GREEN='\0echo "🎯 Next Actions:"
-echo "• The system now automatically fetches new messages every 3 minutes!"
-echo "• Only processes messages newer than 5 minutes (configurable in config.json)"
-echo "• View telegram logs: tail -f logs/telegram.log"
-echo "• View worker logs: tail -f logs/celery_*.log"
-echo "• Monitor resources: ./scripts/monitor_resources.sh"32m'
+GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
@@ -194,7 +189,7 @@ echo "• Flower Monitoring: http://$(curl -s ifconfig.me 2>/dev/null || echo 'Y
 echo "• Flower Local: http://localhost:5555"
 echo ""
 echo "🎯 Next Actions:"
-echo "• The system now automatically fetches new messages every 3 minutes!"
+echo "• The system now automatically fetches new messages every 4 minutes!"
 echo "• View telegram logs: tail -f logs/telegram.log"
 echo "• View worker logs: tail -f logs/celery_*.log"
 echo "• Monitor resources: ./scripts/monitor_resources.sh"
