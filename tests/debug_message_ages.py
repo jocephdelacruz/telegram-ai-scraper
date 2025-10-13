@@ -50,7 +50,7 @@ async def debug_message_ages():
         messages = await telegram_scraper.get_channel_messages(test_channel, limit=10)
         
         # Calculate current cutoff (same logic as the task)
-        fetch_interval_seconds = telegram_config.get('FETCH_INTERVAL_SECONDS', 180)
+        fetch_interval_seconds = telegram_config.get('FETCH_INTERVAL_SECONDS', 240)
         age_limit_seconds = fetch_interval_seconds + 30
         cutoff_time = datetime.now() - timedelta(seconds=age_limit_seconds)
         

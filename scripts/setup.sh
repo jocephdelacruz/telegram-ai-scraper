@@ -128,7 +128,7 @@ if [ ! -f "config/config_sample.json" ]; then
       "API_HASH": "your_telegram_api_hash",
       "PHONE_NUMBER": "your_phone_number",
       "SESSION_FILE": "telegram_session.session",
-      "FETCH_INTERVAL_SECONDS": 180,
+      "FETCH_INTERVAL_SECONDS": 240,
       "FETCH_MESSAGE_LIMIT": 10
    },
    "COUNTRIES": {

@@ -39,7 +39,7 @@ async def debug_recent_messages():
     
     # Get configuration values
     telegram_config = config.get('TELEGRAM_CONFIG', {})
-    fetch_interval_seconds = telegram_config.get('FETCH_INTERVAL_SECONDS', 180)
+    fetch_interval_seconds = telegram_config.get('FETCH_INTERVAL_SECONDS', 240)
     age_limit_seconds = fetch_interval_seconds + 30
     
     # Calculate cutoff time

@@ -461,7 +461,7 @@ def fetch_new_messages_from_all_channels(self):
         # Get fetch configuration
         telegram_config = config.get('TELEGRAM_CONFIG', {})
         message_limit = telegram_config.get('FETCH_MESSAGE_LIMIT', 10)
-        fetch_interval_seconds = telegram_config.get('FETCH_INTERVAL_SECONDS', 180)
+        fetch_interval_seconds = telegram_config.get('FETCH_INTERVAL_SECONDS', 240)
         
         # Calculate age limit based on fetch interval to minimize duplicates while ensuring no missed messages
         # Use fetch interval + 30 seconds buffer to account for processing delays
@@ -741,9 +741,9 @@ def load_beat_schedule():
         config_handler = fh.FileHandling(config_path)
         config = config_handler.read_json()
         
-        # Get fetch interval from config (default to 180 seconds = 3 minutes)
+        # Get fetch interval from config (default to 240 seconds = 4 minutes)
         telegram_config = config.get('TELEGRAM_CONFIG', {}) if config else {}
-        fetch_interval = telegram_config.get('FETCH_INTERVAL_SECONDS', 180)
+        fetch_interval = telegram_config.get('FETCH_INTERVAL_SECONDS', 240)
         
         print(f"Setting up Celery beat schedule with fetch interval: {fetch_interval} seconds")
         
@@ -767,7 +767,7 @@ def load_beat_schedule():
         return {
             'fetch-telegram-messages': {
                 'task': 'src.tasks.telegram_celery_tasks.fetch_new_messages_from_all_channels',
-                'schedule': 180.0,  # Default: 3 minutes
+                'schedule': 240.0,  # Default: 4 minutes
             },
             'cleanup-old-tasks': {
                 'task': 'src.tasks.telegram_celery_tasks.cleanup_old_tasks',

@@ -69,7 +69,7 @@ Edit `config.json` with your credentials and preferences:
 - `TEAMS_ADMIN_CHANNEL`: Name of the admin Teams channel (e.g., "Admin Alerts")
 - `OPEN_AI_KEY`: Your OpenAI API key
 - `TELEGRAM_CONFIG`: Telegram API credentials and periodic fetch configuration
-  - `FETCH_INTERVAL_SECONDS`: How often to check for new messages (default: 180 = 3 minutes)
+  - `FETCH_INTERVAL_SECONDS`: How often to check for new messages (default: 240 = 4 minutes)
   - `FETCH_MESSAGE_LIMIT`: Max messages per channel per fetch (default: 10)
   - Age limit automatically calculated as `FETCH_INTERVAL_SECONDS + 30 seconds` to avoid duplicates
   - **Duplicate Detection**: Redis-based tracking prevents processing the same message twice

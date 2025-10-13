@@ -155,7 +155,7 @@ def test_age_calculation():
             return False
         
         telegram_config = config.get('TELEGRAM_CONFIG', {})
-        fetch_interval_seconds = telegram_config.get('FETCH_INTERVAL_SECONDS', 180)
+        fetch_interval_seconds = telegram_config.get('FETCH_INTERVAL_SECONDS', 240)
         
         # Calculate age limit as done in the task
         age_limit_seconds = fetch_interval_seconds + 30

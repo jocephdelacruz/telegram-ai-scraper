@@ -74,7 +74,7 @@ The system now uses **configurable settings** in `config.json`:
 
 ```json
 "TELEGRAM_CONFIG": {
-    "FETCH_INTERVAL_SECONDS": 180,        // 3 minutes between fetches
+    "FETCH_INTERVAL_SECONDS": 240,        // 4 minutes between fetches
     "FETCH_MESSAGE_LIMIT": 10             // Max messages per channel per fetch
 }
 ```
@@ -85,7 +85,7 @@ To change these settings:
 3. Restart the Celery workers: `./scripts/deploy_celery.sh restart`
 
 ### Default Settings
-- **Fetch Interval**: 3 minutes (180 seconds)
+- **Fetch Interval**: 4 minutes (240 seconds)
 - **Message Limit**: 10 messages per channel per fetch
 - **Age Limit**: Automatically calculated as `FETCH_INTERVAL_SECONDS + 30 seconds` (3.5 minutes for 3-minute intervals)
 
