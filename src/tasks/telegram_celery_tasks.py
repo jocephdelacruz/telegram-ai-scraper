@@ -293,9 +293,15 @@ def save_to_sharepoint(self, message_data, config, country_code):
         # Prepare data for SharePoint - filter to only include expected fields
         excel_fields = config.get('TELEGRAM_EXCEL_FIELDS', [])
         
+        # Create filtered field list for SharePoint (exclude user-facing unnecessary fields from config)
+        excluded_sharepoint_fields = config.get('EXCLUDED_SHAREPOINT_FIELDS', [])
+        sharepoint_fields = [field for field in excel_fields if field not in excluded_sharepoint_fields]
+        
+        LOGGER.writeLog(f"SharePoint field filtering - Total fields: {len(excel_fields)}, SharePoint fields: {len(sharepoint_fields)}")
+        
         # Filter message data to only include fields expected in SharePoint
         filtered_message_data = {}
-        for field in excel_fields:
+        for field in sharepoint_fields:
             value = message_data.get(field, '')
             
             # Apply Excel formula escaping for Channel field to prevent #NAME? errors
@@ -315,7 +321,7 @@ def save_to_sharepoint(self, message_data, config, country_code):
         LOGGER.writeLog(f"Filtered message data - Original fields: {len(message_data)}, Filtered fields: {len(filtered_message_data)}")
         
         sp_data = [filtered_message_data]  # Single filtered message
-        sp_format_data = sp_processor.convertDictToSPFormat(sp_data, excel_fields)
+        sp_format_data = sp_processor.convertDictToSPFormat(sp_data, sharepoint_fields)
         
         if not sp_format_data:
             raise Exception("Failed to convert message data to SharePoint format")
@@ -328,7 +334,7 @@ def save_to_sharepoint(self, message_data, config, country_code):
             next_row = 2
             LOGGER.writeLog(f"Using default row 2 for sheet {sheet_name}")
         
-        range_address = f"A{next_row}:{chr(ord('A') + len(excel_fields) - 1)}{next_row}"
+        range_address = f"A{next_row}:{chr(ord('A') + len(sharepoint_fields) - 1)}{next_row}"
         
         # Only send the data row, not the headers (convertDictToSPFormat returns [headers, data])
         if len(sp_format_data) > 1:

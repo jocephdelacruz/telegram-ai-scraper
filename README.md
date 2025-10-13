@@ -198,6 +198,68 @@ python3 -c "from src.integrations.teams_utils import send_critical_exception; se
 
 See [config_sample.json](config/config_sample.json) for complete configuration examples.
 
+### Field Exclusion Configuration
+
+The system now supports **configurable field exclusions** for Teams notifications and SharePoint Excel files, allowing you to customize what information is displayed to end users while preserving complete data in CSV files.
+
+#### Configuration Fields
+
+```json
+{
+  "TELEGRAM_EXCEL_FIELDS": [
+    "Message_ID", "Channel", "Country", "Date", "Time", "Author", "Message_Text", 
+    "AI_Category", "AI_Reasoning", "Keywords_Matched", "Message_Type", 
+    "Forward_From", "Media_Type", "Original_Text", "Original_Language", 
+    "Was_Translated", "Processed_Date"
+  ],
+  "EXCLUDED_TEAMS_FIELDS": [
+    "Country", "AI_Category", "Message_Type", "Forward_From", "Media_Type", 
+    "Was_Translated", "Processed_Date", "Author"
+  ],
+  "EXCLUDED_SHAREPOINT_FIELDS": [
+    "Country", "AI_Category", "Message_Type", "Forward_From", "Media_Type", 
+    "Was_Translated", "Processed_Date", "Author"
+  ]
+}
+```
+
+#### How It Works
+
+- **TELEGRAM_EXCEL_FIELDS**: Master list of all available fields (17 total)
+- **EXCLUDED_TEAMS_FIELDS**: Fields to hide from Teams notifications (configurable)
+- **EXCLUDED_SHAREPOINT_FIELDS**: Fields to hide from SharePoint Excel files (configurable)
+- **CSV Files**: Always preserve all fields from `TELEGRAM_EXCEL_FIELDS` for complete data integrity
+
+#### Default Exclusions
+
+By default, the following technical fields are excluded from user-facing Teams and SharePoint outputs:
+- `Country`: Redundant (shown in title/context)
+- `AI_Category`: Internal classification
+- `Message_Type`: Technical metadata
+- `Forward_From`: Technical forwarding info
+- `Media_Type`: Technical media info
+- `Was_Translated`: Internal processing flag
+- `Processed_Date`: Internal timestamp
+- `Author`: Redundant with Channel in Telegram context
+
+#### Customization
+
+To show additional fields in Teams or SharePoint, simply remove them from the excluded fields arrays in `config.json`. For example, to show Country information in Teams notifications:
+
+```json
+"EXCLUDED_TEAMS_FIELDS": [
+  "AI_Category", "Message_Type", "Forward_From", "Media_Type", 
+  "Was_Translated", "Processed_Date", "Author"
+]
+```
+
+#### Benefits
+
+- **User-Friendly Display**: Teams and SharePoint show only relevant information
+- **Complete Data Preservation**: CSV files maintain all fields for future database migration
+- **Easy Customization**: Modify exclusions in config.json without code changes
+- **Flexible Architecture**: Different exclusions for Teams vs SharePoint if needed
+
 ### Advanced Features
 
 - **Country-Specific Filtering**: Each country has tailored keywords for cultural relevance
@@ -510,13 +572,43 @@ The system now features advanced dual-language keyword matching for optimal perf
 - **Cost Effective** processing with smart filtering cascades
 - **Extensible Design** - easy to add more language pairs for other countries
 
-### Excel Fields for Translation
+### Data Fields and Storage
 
-Updated fields in Excel output:
-- `Original_Text`: The original message text before translation
-- `Original_Language`: Detected language of the original message
+#### Complete Field List (TELEGRAM_EXCEL_FIELDS)
+
+The system processes 17 fields for each message:
+
+**Core Message Fields:**
+- `Message_ID`: Unique Telegram message identifier
+- `Channel`: Source Telegram channel (e.g., @channelname)
+- `Date`: Message date (YYYY-MM-DD)
+- `Time`: Message time (HH:MM:SS)
+- `Author`: Message author (often same as Channel)
+- `Message_Text`: Processed message content (translated if needed)
+
+**Analysis Fields:**
+- `AI_Category`: Significance classification (Significant/Trivial)
+- `AI_Reasoning`: OpenAI explanation for classification
+- `Keywords_Matched`: Matched keywords that triggered classification
+
+**Metadata Fields:**
+- `Country`: Country associated with the message
+- `Message_Type`: Type of message (text, photo, video, etc.)
+- `Forward_From`: Original source if message was forwarded
+- `Media_Type`: Type of media attached (if any)
+- `Processed_Date`: When the message was processed by the system
+
+**Translation Fields:**
+- `Original_Text`: Original message text before translation
+- `Original_Language`: Detected language of original message
 - `Was_Translated`: Boolean indicating if translation was performed
-- `Message_Text`: Contains the processed text (translated if needed for analysis)
+
+#### Storage Strategy
+
+- **CSV Files**: Store ALL 17 fields for complete data preservation and future database migration
+- **Teams Notifications**: Show 9 user-relevant fields (8 excluded via config)
+- **SharePoint Excel**: Show 9 user-relevant fields (8 excluded via config)
+- **Configurable**: Easily customize what fields appear in Teams/SharePoint via `config.json`
 
 ## Logging
 

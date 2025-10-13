@@ -197,7 +197,13 @@ if [ ! -f "config/config_sample.json" ]; then
    "TELEGRAM_EXCEL_FIELDS": [
       "Message_ID", "Channel", "Country", "Date", "Time", "Author", "Message_Text", 
       "AI_Category", "AI_Reasoning", "Keywords_Matched", "Message_Type", "Forward_From", 
-      "Media_Type", "Processed_Date"
+      "Media_Type", "Original_Text", "Original_Language", "Was_Translated", "Processed_Date"
+   ],
+   "EXCLUDED_TEAMS_FIELDS": [
+      "Country", "AI_Category", "Message_Type", "Forward_From", "Media_Type", "Was_Translated", "Processed_Date", "Author"
+   ],
+   "EXCLUDED_SHAREPOINT_FIELDS": [
+      "Country", "AI_Category", "Message_Type", "Forward_From", "Media_Type", "Was_Translated", "Processed_Date", "Author"
    ],
    "CELERY_CONFIG": {
       "broker_url": "redis://localhost:6379/0",

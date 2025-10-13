@@ -361,6 +361,33 @@ class TestRunner:
             if debug_status == 'PASS':
                 print("   📊 Debug information collected successfully")
             
+    def test_field_exclusions(self):
+        """Test configurable field exclusions for Teams and SharePoint"""
+        self.print_section("Field Exclusions Tests")
+        
+        # Test comprehensive field exclusions (consolidated test)
+        status, details = self.run_python_test("test_comprehensive_field_exclusions.py", timeout=90)
+        self.print_result("Comprehensive Field Exclusions", status, details if status != 'PASS' else None)
+        
+        if status == 'PASS':
+            self.results['passed'] += 1
+            # Field exclusions test includes multiple validations
+            print("   ✅ Configuration Structure")
+            print("   ✅ Author Field Exclusion") 
+            print("   ✅ Teams Field Loading")
+            print("   ✅ Field Count Calculations")
+            print("   ✅ SharePoint Range Calculation")
+            print("   ✅ Message Processing Simulation")
+            print("   ✅ Teams Facts Filtering")
+            print("   ✅ Exclusion Verification")
+            print("   ✅ CSV Data Preservation")
+            print("   ✅ Configuration Consistency")
+        elif status == 'SKIP':
+            self.results['skipped'] += 1
+        else:
+            self.results['failed'] += 1
+            self.results['errors'].append(f"Comprehensive Field Exclusions: {details}")
+
     def test_admin_teams_connection(self):
         """Test Admin Teams webhook connectivity"""
         self.print_section("Admin Teams Connection Tests")
@@ -571,6 +598,7 @@ class TestRunner:
         self.test_message_processing()
         self.test_csv_storage()
         self.test_sharepoint_storage()
+        self.test_field_exclusions()
         self.test_celery_tasks()
         self.test_admin_teams_connection()
         
@@ -595,6 +623,7 @@ def main():
     parser.add_argument("--processing", action="store_true", help="Run only message processing tests")
     parser.add_argument("--csv", action="store_true", help="Run only CSV storage tests")
     parser.add_argument("--sharepoint", action="store_true", help="Run only SharePoint storage tests")
+    parser.add_argument("--field-exclusions", action="store_true", help="Run only field exclusions tests")
     parser.add_argument("--admin-teams", action="store_true", help="Run only Admin Teams connection tests")
     
     args = parser.parse_args()
@@ -621,6 +650,9 @@ def main():
         return runner.generate_report()
     elif args.sharepoint:
         runner.test_sharepoint_storage()
+        return runner.generate_report()
+    elif args.field_exclusions:
+        runner.test_field_exclusions()
         return runner.generate_report()
     elif args.admin_teams:
         runner.test_admin_teams_connection()

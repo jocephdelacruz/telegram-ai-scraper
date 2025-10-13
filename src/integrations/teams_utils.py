@@ -78,6 +78,33 @@ class TeamsNotifier:
             LOGGER.writeLog(f"Error sending message to Teams: {e}")
             return False
 
+    def _load_excluded_teams_fields(self):
+        """
+        Load excluded teams fields from config.json
+        
+        Returns:
+            List of field names to exclude from Teams notifications
+        """
+        try:
+            import os
+            import json
+            
+            # Get project root directory
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            config_path = os.path.join(project_root, "config", "config.json")
+            
+            if os.path.exists(config_path):
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                return config.get('EXCLUDED_TEAMS_FIELDS', [])
+            else:
+                LOGGER.writeLog(f"Config file not found: {config_path}")
+                return []
+                
+        except Exception as e:
+            LOGGER.writeLog(f"Error loading excluded teams fields from config: {e}")
+            return []
+
     def send_message_alert(self, message_data):
         """
         Send a formatted Telegram message alert to Teams with country support
@@ -103,35 +130,59 @@ class TeamsNotifier:
             if len(message_text) > 500:
                 message_text = message_text[:500] + "..."
 
-            # Prepare facts for structured information
-            facts = [
-                {"name": "Country", "value": country_name},
-                {"name": "Channel", "value": message_data.get('Channel', message_data.get('channel', 'Unknown'))},
-                {"name": "Date & Time", "value": f"{message_data.get('Date', '')} {message_data.get('Time', '')}"},
-                {"name": "Author", "value": message_data.get('Author', 'Unknown')},
-                {"name": "AI Classification", "value": ai_category},
-                {"name": "AI Reasoning", "value": ai_reasoning[:200] + "..." if len(ai_reasoning) > 200 else ai_reasoning},
-                {"name": "Message Type", "value": message_data.get('Message_Type', 'text')},
-            ]
-
-            # Add forward information if available
-            if message_data.get('Forward_From'):
-                facts.append({"name": "Forwarded From", "value": message_data.get('Forward_From')})
-
-            # Add media type if available
-            if message_data.get('Media_Type'):
-                facts.append({"name": "Media Type", "value": message_data.get('Media_Type')})
+            # Load excluded fields from config
+            excluded_fields = self._load_excluded_teams_fields()
+            
+            # Prepare facts for structured information (excluding fields specified in config)
+            facts = []
+            
+            # Always include basic message information
+            if 'Channel' not in excluded_fields:
+                facts.append({"name": "Channel", "value": message_data.get('Channel', message_data.get('channel', 'Unknown'))})
+            
+            facts.append({"name": "Date & Time", "value": f"{message_data.get('Date', '')} {message_data.get('Time', '')}"})
+            
+            if 'Author' not in excluded_fields:
+                facts.append({"name": "Author", "value": message_data.get('Author', 'Unknown')})
+            
+            facts.append({"name": "AI Reasoning", "value": ai_reasoning[:200] + "..." if len(ai_reasoning) > 200 else ai_reasoning})
 
             # Add matched keywords if available
             keywords = message_data.get('Keywords_Matched', '')
             if keywords:
                 facts.append({"name": "Keywords Matched", "value": keywords})
 
-            # Add translation information if available
+            # Add Country information if not excluded (processing preserved)
+            if 'Country' not in excluded_fields and message_data.get('Country'):
+                facts.append({"name": "Country", "value": message_data.get('Country')})
+
+            # Add AI Category information if not excluded (processing preserved)
+            if 'AI_Category' not in excluded_fields and message_data.get('AI_Category'):
+                facts.append({"name": "AI Category", "value": message_data.get('AI_Category')})
+
+            # Add Message Type information if not excluded (processing preserved)
+            if 'Message_Type' not in excluded_fields and message_data.get('Message_Type'):
+                facts.append({"name": "Message Type", "value": message_data.get('Message_Type')})
+
+            # Add Forward From information if not excluded (processing preserved)
+            if 'Forward_From' not in excluded_fields and message_data.get('Forward_From'):
+                facts.append({"name": "Forwarded From", "value": message_data.get('Forward_From')})
+
+            # Add Media Type information if not excluded (processing preserved)
+            if 'Media_Type' not in excluded_fields and message_data.get('Media_Type'):
+                facts.append({"name": "Media Type", "value": message_data.get('Media_Type')})
+
+            # Add translation information if available (processing preserved)
             if message_data.get('Was_Translated'):
                 original_language = message_data.get('Original_Language', 'Unknown')
                 facts.append({"name": "Original Language", "value": original_language})
-                facts.append({"name": "Translation", "value": "✅ Translated to English"})
+                
+                if 'Was_Translated' not in excluded_fields:
+                    facts.append({"name": "Translation", "value": "✅ Translated to English"})
+
+            # Add Processed Date information if not excluded (processing preserved)
+            if 'Processed_Date' not in excluded_fields and message_data.get('Processed_Date'):
+                facts.append({"name": "Processed Date", "value": message_data.get('Processed_Date')})
 
             # Create the message
             message_content_header = "**Message Content (English):**" if message_data.get('Was_Translated') else "**Message Content:**"

@@ -49,6 +49,9 @@ The test runner system consists of several key components:
 # Test only SharePoint storage
 ./scripts/run_tests.sh --sharepoint
 
+# Test only field exclusions
+./scripts/run_tests.sh --field-exclusions
+
 # Test only admin Teams connectivity (consolidated global + direct tests)
 ./scripts/run_tests.sh --admin-teams
 ```
