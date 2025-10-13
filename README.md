@@ -7,6 +7,7 @@ An intelligent, high-performance Telegram message scraper that uses OpenAI to an
 - **Periodic Message Fetching**: Automatically checks for new messages every 3 minutes (configurable) with intelligent age filtering
 - **Real-time Monitoring**: Continuously monitors specified Telegram channels for new messages using asyncio
 - **Advanced Session Management**: Intelligent Telegram session handling with automatic recovery and rate limit management
+- **Session Safety System**: Prevents session invalidation through concurrent access protection and file locking
 - **Resilient Error Handling**: Smart retry logic with graceful degradation for API issues and rate limiting
 - **Distributed Processing**: Uses Celery workers for parallel processing of AI analysis, notifications, and data storage
 - **Intelligent Message Filtering**: Country-specific keyword filtering with AI fallback for optimal performance and accuracy
@@ -312,6 +313,58 @@ For detailed configuration examples and migration guides, see the [Complete Enha
 
 **📋 For step-by-step instructions to run the project, see: [Running Guide](docs/RUNNING_GUIDE.md)**
 
+## Session Safety System 🛡️
+
+The system includes **comprehensive session safety protection** to prevent Telegram session invalidation that disconnects your phone's Telegram app.
+
+### Session Safety Features
+
+- **Concurrent Access Prevention**: File locking prevents multiple processes from accessing session simultaneously
+- **Worker Detection**: Automatically detects running Celery workers before allowing manual session access
+- **Safe Testing**: All test and debug scripts include session conflict protection
+- **Graceful Shutdown**: Extended shutdown timeout (15s) allows proper Telegram session cleanup
+- **Safety Validation**: Built-in session safety checker tool
+
+### Session Safety Tools
+
+```bash
+# Check if it's safe to perform Telegram operations
+python3 scripts/check_session_safety.py
+
+# Session status and health check
+python3 scripts/telegram_session_check.py --quick
+
+# Safe re-authentication process
+./scripts/deploy_celery.sh stop      # Stop workers first
+python3 scripts/telegram_auth.py    # Authenticate safely
+./scripts/deploy_celery.sh start    # Restart workers
+```
+
+### Best Practices
+
+**✅ SAFE Operations:**
+- Using `./scripts/deploy_celery.sh stop` (graceful shutdown)
+- Running tests only when workers are stopped
+- Following guided re-authentication process
+
+**❌ UNSAFE Operations:**
+- Running debug scripts while workers are active
+- Using `kill -9` on worker processes
+- Multiple processes accessing session simultaneously
+
+### Session Safety Warnings
+
+When session conflicts are detected, you'll see clear warnings:
+```
+🚫 UNSAFE: Celery workers are running and may be using the Telegram session!
+   Active worker PIDs: 12345, 67890
+   
+   Solutions:
+   1. Stop workers first: ./scripts/deploy_celery.sh stop
+   2. Run your operation, then restart: ./scripts/deploy_celery.sh start
+   3. Or wait for workers to finish current tasks
+```
+
 ## Usage
 
 ### 🚀 Quick Start (Recommended)
@@ -386,6 +439,7 @@ chmod +x scripts/quick_start.sh
 |--------|---------|-------------|--------------|
 | `tests/validate_telegram_config.py` | **Telegram credential validator** | Before authentication, credential issues | Network tests, credential validation, interactive updates |
 | `scripts/telegram_session_check.py` | **Advanced session status checker** | Any time, troubleshooting | Comprehensive diagnostics with recovery guidance |
+| `scripts/check_session_safety.py` | **Session safety validator** | Before manual operations | Detects session conflicts and provides safe operation guidance |
 | `tests/check_telegram_status.py` | API rate limit status checker | Check rate limiting status | Monitors API rate limits and provides recovery timeline |
 | `tests/telegram_recovery.py` | Automated recovery script | After rate limit expires | Restores system operation post-rate-limit |
 | `tests/test_translation.py` | Translation system testing | Verify OpenAI integration | Test language detection and translation |
@@ -731,27 +785,34 @@ celery -A src.tasks.telegram_celery_tasks worker --queues=notifications --concur
    - View task queues: `celery -A src.tasks.telegram_celery_tasks inspect reserved`
    - Monitor with Flower: `celery -A src.tasks.telegram_celery_tasks flower`
 
-3. **Telegram Authentication Failed**
+3. **Telegram Session Invalidation (Phone Disconnected)**
+   - **Most Common Issue**: Session conflicts between workers and manual operations
+   - **Solution**: Use session safety tools before operations
+   - **Check conflicts**: `python3 scripts/check_session_safety.py`
+   - **Safe workflow**: Stop workers → Perform operation → Restart workers
+   - **Emergency**: Use `scripts/telegram_session_check.py --quick` for recovery
+
+4. **Telegram Authentication Failed**
    - Verify API ID and API Hash
    - Ensure phone number is correct
    - Check if 2FA is enabled on your Telegram account
 
-4. **OpenAI API Errors**
+5. **OpenAI API Errors**
    - Verify API key is valid and has sufficient credits
    - Check for rate limiting in worker logs
    - Ensure model access permissions
 
-5. **Teams Notifications Not Working**
+6. **Teams Notifications Not Working**
    - Verify webhook URL is correct
    - Check Teams channel permissions
    - Test webhook with a simple curl command
 
-6. **SharePoint Connection Issues**
+7. **SharePoint Connection Issues**
    - Verify client credentials
    - Check SharePoint site and file permissions
    - Ensure Excel file exists and is accessible
 
-7. **High Memory Usage**
+8. **High Memory Usage**
    - Reduce worker concurrency levels
    - Implement task result expiration
    - Monitor with `htop` or similar tools
@@ -782,7 +843,31 @@ This guide covers:
 
 ### Common Issues and Solutions
 
-#### 1. Memory Issues on Small Instances (t3.small, etc.)
+#### 1. Telegram Session Invalidation (Phone Disconnects) ⚠️ MOST COMMON
+**Symptoms:** Phone shows "Telegram Web/Desktop is Online", actual Telegram app gets logged out
+**Root Cause:** Multiple processes accessing the same session file simultaneously
+**Solutions:**
+```bash
+# ALWAYS check before manual operations
+python3 scripts/check_session_safety.py
+
+# Safe workflow for testing/debugging
+./scripts/deploy_celery.sh stop      # Stop workers first
+python3 your_test_script.py         # Run your operation
+./scripts/deploy_celery.sh start    # Restart workers
+
+# Emergency recovery if phone disconnected
+python3 scripts/telegram_session_check.py --quick
+# Follow the guided recovery process
+```
+
+**Prevention Best Practices:**
+- ✅ Always use `./scripts/deploy_celery.sh stop` (graceful shutdown)
+- ✅ Run tests only when workers are stopped
+- ❌ Never use `kill -9` on worker processes
+- ❌ Never run debug scripts while workers are active
+
+#### 2. Memory Issues on Small Instances (t3.small, etc.)
 **Symptoms:** Workers crashing, "Memory Error", system freezing
 **Solutions:**
 ```bash
@@ -796,7 +881,7 @@ This guide covers:
 free -h
 ```
 
-#### 2. Redis Connection Errors
+#### 3. Redis Connection Errors
 **Symptoms:** "Connection refused", "Redis server not available"
 **Solutions:**
 ```bash
@@ -810,7 +895,7 @@ sudo systemctl start redis-server
 redis-cli ping  # Should return "PONG"
 ```
 
-#### 3. Celery Workers Not Starting
+#### 4. Celery Workers Not Starting
 **Symptoms:** "No such file or directory", import errors
 **Solutions:**
 ```bash

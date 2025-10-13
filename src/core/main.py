@@ -20,6 +20,7 @@ from src.core import log_handling as lh
 from src.core import file_handling as fh
 from src.integrations.telegram_utils import TelegramScraper
 from src.integrations.telegram_session_manager import TelegramRateLimitError, TelegramSessionError, TelegramAuthError
+from src.integrations.session_safety import SessionSafetyManager, SessionSafetyError
 from src.integrations.openai_utils import OpenAIProcessor
 from src.integrations.teams_utils import TeamsNotifier
 from src.integrations.sharepoint_utils import SharepointProcessor
@@ -650,6 +651,18 @@ async def main():
             print("Running API connection tests...")
             LOGGER.writeLog("Testing API connections...")
             
+            # Session safety check for Telegram tests
+            safety = SessionSafetyManager()
+            try:
+                safety.check_session_safety("main_test_mode")
+                print("✅ Session safety check passed for test mode")
+                safety.record_session_access("main_test_mode")
+            except SessionSafetyError as e:
+                print("🚫 SESSION SAFETY WARNING for test mode:")
+                print(str(e))
+                print("⚠️  Skipping Telegram tests to prevent session invalidation")
+                scraper.telegram_scraper = None  # Disable Telegram tests
+            
             # Test Teams connection
             if scraper.teams_notifier:
                 print("Testing Teams connection...")
@@ -704,13 +717,49 @@ async def main():
             print("Connection tests completed")
             LOGGER.writeLog("Connection tests completed")
             
+            # Clean up session safety record
+            try:
+                safety.cleanup_session_access()
+            except:
+                pass
+            
         elif args.mode == 'historical':
-            LOGGER.writeLog(f"Starting historical scraping (limit: {args.limit} per channel)...")
-            await scraper.scrape_historical_messages(args.limit)
+            # Session safety check for historical mode
+            safety = SessionSafetyManager()
+            try:
+                safety.check_session_safety("main_historical_mode")
+                print("✅ Session safety check passed for historical mode")
+                safety.record_session_access("main_historical_mode")
+                
+                LOGGER.writeLog(f"Starting historical scraping (limit: {args.limit} per channel)...")
+                await scraper.scrape_historical_messages(args.limit)
+                
+                # Clean up session safety record
+                safety.cleanup_session_access()
+            except SessionSafetyError as e:
+                print("🚫 SESSION SAFETY ERROR for historical mode:")
+                print(str(e))
+                print("❌ Cannot run historical scraping - session conflict detected")
+                LOGGER.writeLog("Historical scraping aborted due to session safety check")
             
         else:  # monitor mode
-            LOGGER.writeLog("Starting real-time monitoring...")
-            await scraper.start_monitoring()
+            # Session safety check for monitor mode
+            safety = SessionSafetyManager()
+            try:
+                safety.check_session_safety("main_monitor_mode")
+                print("✅ Session safety check passed for monitor mode")
+                safety.record_session_access("main_monitor_mode")
+                
+                LOGGER.writeLog("Starting real-time monitoring...")
+                await scraper.start_monitoring()
+                
+                # Clean up session safety record
+                safety.cleanup_session_access()
+            except SessionSafetyError as e:
+                print("🚫 SESSION SAFETY ERROR for monitor mode:")
+                print(str(e))
+                print("❌ Cannot start monitoring - session conflict detected")
+                LOGGER.writeLog("Monitoring aborted due to session safety check")
 
     except KeyboardInterrupt:
         LOGGER.writeLog("Received keyboard interrupt")

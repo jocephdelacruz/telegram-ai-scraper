@@ -67,6 +67,19 @@ def test_telegram_scraper_init():
     """Test TelegramScraper initialization without connecting"""
     print("🔄 Testing TelegramScraper initialization...")
     
+    # SAFETY CHECK: Only test initialization, no actual connection
+    from src.integrations.session_safety import SessionSafetyManager, SessionSafetyError
+    
+    safety = SessionSafetyManager()
+    try:
+        safety.check_session_safety("test_telegram_init")
+        print("✅ Session safety check passed - safe for initialization test")
+        safety.record_session_access("test_telegram_init")
+    except SessionSafetyError as e:
+        print("⚠️  SESSION SAFETY WARNING for initialization test:")
+        print(str(e))
+        print("✅ This test only initializes objects (no connection), proceeding anyway...")
+    
     try:
         # Load config
         from src.core import file_handling as fh
@@ -103,6 +116,12 @@ def test_telegram_scraper_init():
     except Exception as e:
         print(f"❌ TelegramScraper initialization failed: {e}")
         return False
+    finally:
+        # Clean up session safety records
+        try:
+            safety.cleanup_session_access()
+        except:
+            pass
 
 
 def test_celery_task_execution_simulation():

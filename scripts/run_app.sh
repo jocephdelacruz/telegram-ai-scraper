@@ -30,6 +30,10 @@ print_error() {
 echo "=========================================="
 echo "Telegram AI Scraper - Application Runner"
 echo "=========================================="
+echo ""
+echo "ℹ️  Session Safety: This script includes automatic"
+echo "   session conflict detection to prevent invalidation"
+echo ""
 
 # Change to project directory
 cd "$PROJECT_DIR" || exit 1

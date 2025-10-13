@@ -27,6 +27,17 @@ from src.integrations.telegram_session_manager import TelegramRateLimitError, Te
 async def debug_recent_messages():
     """Debug recent messages from channels that should have new content"""
     
+    # SAFETY CHECK: Prevent session invalidation by checking for concurrent access
+    from src.integrations.session_safety import SessionSafetyManager, SessionSafetyError
+    
+    safety = SessionSafetyManager()
+    try:
+        safety.check_session_safety("debug_recent_messages")
+        print("✅ Session safety check passed - proceeding with debug")
+    except SessionSafetyError as e:
+        print(str(e))
+        return
+    
     # Load configuration
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     config_path = os.path.join(project_root, "config", "config.json")
@@ -168,6 +179,8 @@ async def debug_recent_messages():
         try:
             await telegram_scraper.stop_client()
             print("✅ Telegram client disconnected")
+            # Clean up session safety records
+            safety.cleanup_session_access()
         except:
             pass
 

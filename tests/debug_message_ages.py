@@ -14,6 +14,18 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 async def debug_message_ages():
     """Check actual message dates from the channel"""
     try:
+        # SAFETY CHECK: Prevent session conflicts
+        from src.integrations.session_safety import SessionSafetyManager, SessionSafetyError
+        
+        safety = SessionSafetyManager()
+        try:
+            safety.check_session_safety("debug_message_ages")
+            print("✅ Session safety check passed - proceeding with debug")
+            safety.record_session_access("debug_message_ages")
+        except SessionSafetyError as e:
+            print(str(e))
+            return
+        
         # Load config and create scraper
         from src.core import file_handling as fh
         from src.integrations.telegram_utils import TelegramScraper
@@ -107,7 +119,15 @@ async def debug_message_ages():
         await telegram_scraper.stop_client()
         
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        # Clean up session safety records
+        try:
+            safety.cleanup_session_access()
+        except:
+            pass
 
 def main():
     """Run the debug check"""

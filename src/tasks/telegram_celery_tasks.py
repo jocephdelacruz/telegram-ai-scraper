@@ -683,17 +683,22 @@ async def fetch_messages_async(telegram_scraper, all_channels, config, cutoff_ti
                 LOGGER.writeLog(f"Error fetching from channel {channel_info['channel']}: {e}")
                 continue
                 
-        # Stop Telegram client
+        # Stop Telegram client with proper cleanup
         await telegram_scraper.stop_client()
         LOGGER.writeLog("Telegram client stopped after periodic fetch")
         
+        # Small delay to ensure proper cleanup
+        await asyncio.sleep(1)
+        
     except Exception as e:
         LOGGER.writeLog(f"Error in async message fetch: {e}")
-        # Ensure client is stopped
+        # Ensure client is stopped even if there was an error
         try:
             await telegram_scraper.stop_client()
-        except:
-            pass
+            # Give extra time for cleanup after errors
+            await asyncio.sleep(2)
+        except Exception as cleanup_error:
+            LOGGER.writeLog(f"Error during cleanup: {cleanup_error}")
         raise
     
     return total_messages, skipped_messages

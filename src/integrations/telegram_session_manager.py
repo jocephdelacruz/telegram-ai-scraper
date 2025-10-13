@@ -8,6 +8,8 @@ including automatic recovery, rate limit handling, and session corruption detect
 import os
 import asyncio
 import logging
+import fcntl
+import time
 from datetime import datetime, timedelta
 from telethon import TelegramClient
 from telethon.errors import (
@@ -69,6 +71,8 @@ class TelegramSessionManager:
         self.rate_limit_until = None
         self.connection_attempts = 0
         self.max_retry_attempts = 2
+        self._session_lock = None
+        self._lock_file_path = f"{session_file}.lock"
         
         # Setup logging
         self.logger = logging.getLogger(__name__)
@@ -119,13 +123,16 @@ class TelegramSessionManager:
         return await self._create_new_client()
     
     async def _create_new_client(self):
-        """Create and authenticate a new Telegram client"""
+        """Create and authenticate a new Telegram client with file locking"""
         self.connection_attempts += 1
+        
+        # Acquire file lock to prevent concurrent session access
+        await self._acquire_session_lock()
         
         try:
             self.client = TelegramClient(self.session_file, self.api_id, self.api_hash)
             
-            self.logger.info(f"Attempting to start Telegram client (attempt {self.connection_attempts})")
+            self.logger.info(f"Attempting to start Telegram client (attempt {self.connection_attempts}) with session lock")
             
             # Start the client with phone authentication
             await self.client.start(phone=self.phone_number)
@@ -138,7 +145,7 @@ class TelegramSessionManager:
             self.rate_limit_until = None
             self.connection_attempts = 0
             
-            self.logger.info("Telegram client started successfully")
+            self.logger.info("Telegram client started successfully with session protection")
             return self.client
             
         except FloodWaitError as e:
@@ -224,19 +231,78 @@ class TelegramSessionManager:
         await self._cleanup_client()
     
     async def _cleanup_client(self):
-        """Properly cleanup the current client"""
+        """Properly cleanup the current client with graceful disconnect"""
         if self.client:
             try:
-                await self.client.disconnect()
+                # Give the client more time to disconnect gracefully
+                await asyncio.wait_for(self.client.disconnect(), timeout=10)
+                self.logger.debug("Client disconnected gracefully")
+            except asyncio.TimeoutError:
+                self.logger.warning("Client disconnect timed out")
             except Exception as e:
                 self.logger.warning(f"Error during client disconnect: {e}")
             finally:
                 self.client = None
+        
+        # Always release the session lock after cleanup
+        await self._release_session_lock()
     
+    async def _acquire_session_lock(self):
+        """Acquire file lock to prevent concurrent session access"""
+        try:
+            # Create lock file if it doesn't exist
+            if not os.path.exists(self._lock_file_path):
+                with open(self._lock_file_path, 'w') as f:
+                    f.write(f"Session lock created at {datetime.now().isoformat()}\n")
+            
+            # Open and lock the file
+            self._session_lock = open(self._lock_file_path, 'r+')
+            
+            # Try to acquire exclusive lock with timeout
+            max_wait = 30  # 30 seconds timeout
+            wait_time = 0
+            while wait_time < max_wait:
+                try:
+                    fcntl.flock(self._session_lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    self.logger.debug(f"Session lock acquired after {wait_time}s")
+                    return
+                except BlockingIOError:
+                    # Lock is held by another process
+                    if wait_time == 0:
+                        self.logger.warning("Session lock held by another process, waiting...")
+                    await asyncio.sleep(1)
+                    wait_time += 1
+            
+            # Timeout reached
+            self.logger.error(f"Failed to acquire session lock after {max_wait}s")
+            raise Exception("Session lock timeout - another process may be using the session")
+            
+        except Exception as e:
+            if self._session_lock:
+                try:
+                    self._session_lock.close()
+                except:
+                    pass
+                self._session_lock = None
+            raise
+
+    async def _release_session_lock(self):
+        """Release the session file lock"""
+        if self._session_lock:
+            try:
+                fcntl.flock(self._session_lock.fileno(), fcntl.LOCK_UN)
+                self._session_lock.close()
+                self.logger.debug("Session lock released")
+            except Exception as e:
+                self.logger.warning(f"Error releasing session lock: {e}")
+            finally:
+                self._session_lock = None
+
     async def close(self):
-        """Properly close the session manager"""
+        """Properly close the session manager with lock cleanup"""
         await self._cleanup_client()
-        self.logger.info("Telegram session manager closed")
+        await self._release_session_lock()
+        self.logger.info("Telegram session manager closed with lock cleanup")
     
     def is_rate_limited(self):
         """Check if currently rate limited"""

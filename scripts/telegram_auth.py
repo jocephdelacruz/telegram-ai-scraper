@@ -17,10 +17,24 @@ from src.integrations.telegram_utils import TelegramScraper
 from src.integrations.telegram_session_manager import TelegramRateLimitError, TelegramSessionError, TelegramAuthError
 
 async def authenticate_telegram():
-    """Force Telegram authentication"""
+    """Force Telegram authentication with safety checks"""
     print("========================================")
     print("Telegram Authentication Setup")
     print("========================================")
+    
+    # SAFETY CHECK: Prevent session conflicts during authentication
+    from src.integrations.session_safety import SessionSafetyManager, SessionSafetyError
+    
+    safety = SessionSafetyManager()
+    try:
+        safety.check_session_safety("telegram_authentication")
+        print("✅ Session safety check passed - safe to authenticate")
+        safety.record_session_access("telegram_authentication")
+    except SessionSafetyError as e:
+        print(str(e))
+        print("\n💡 IMPORTANT: Authentication while workers are running")
+        print("   can cause session invalidation and disconnect your phone!")
+        return False
     
     try:
         # Load config
@@ -153,6 +167,12 @@ async def authenticate_telegram():
         import traceback
         traceback.print_exc()
         return False
+    finally:
+        # Always clean up session safety records
+        try:
+            safety.cleanup_session_access()
+        except:
+            pass
 
 if __name__ == "__main__":
     print("This script will help you authenticate with Telegram")

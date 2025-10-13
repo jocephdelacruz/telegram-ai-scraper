@@ -94,14 +94,16 @@ if [ ! -f "telegram_session.session" ]; then
         echo "The system needs to authenticate with Telegram for the first time."
         echo "This requires entering an SMS verification code sent to your phone."
         echo ""
+        print_warning "⚠️  IMPORTANT: Authentication will be done safely without session conflicts"
+        echo ""
         read -p "Run Telegram authentication now? (y/n): " auth_now
         
         if [ "$auth_now" = "y" ] || [ "$auth_now" = "Y" ]; then
-            print_status "Starting Telegram authentication..."
+            print_status "Starting SAFE Telegram authentication (session conflict protection enabled)..."
             python3 scripts/telegram_auth.py
             
             if [ $? -eq 0 ]; then
-                print_success "Telegram authentication completed!"
+                print_success "Telegram authentication completed safely!"
             else
                 print_error "Telegram authentication failed"
                 print_error "Please run manually: python3 scripts/telegram_auth.py"
@@ -118,6 +120,14 @@ if [ ! -f "telegram_session.session" ]; then
     fi
 else
     print_success "Telegram session file found"
+    # Verify session safety for existing sessions
+    print_status "Verifying session integrity..."
+    if python3 scripts/check_session_safety.py >/dev/null 2>&1; then
+        print_success "Session integrity verified"
+    else
+        print_warning "Session safety check found potential issues"
+        print_warning "Check with: python3 scripts/check_session_safety.py"
+    fi
 fi
 
 # Step 3: Check configuration

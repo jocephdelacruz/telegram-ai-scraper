@@ -217,8 +217,18 @@ class TestRunner:
             self.results['failed'] += 1
             self.results['errors'].append(f"Session manager initialization failed: {e}")
             
-        # Test session status checker script
-        status, details = self.run_python_test("../scripts/telegram_session_check.py", timeout=30)
+        # Test session status checker script (with safety check)
+        # Check if it's safe to run session checker
+        try:
+            from src.integrations.session_safety import SessionSafetyManager, SessionSafetyError
+            safety = SessionSafetyManager()
+            safety.check_session_safety("run_tests_session_check")
+            
+            # It's safe to run the session checker
+            status, details = self.run_python_test("../scripts/telegram_session_check.py", timeout=30)
+        except SessionSafetyError:
+            # Not safe to run - workers are active
+            status, details = "SKIP", "Session checker skipped - workers active (prevents session conflicts)"
         # Convert to relative path for the test file
         if status == 'SKIP':
             # Try running the script directly

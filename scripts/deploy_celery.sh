@@ -258,14 +258,18 @@ stop_all_workers() {
                 kill -9 "$pid" 2>/dev/null
                 sleep 1
             else
-                # Graceful shutdown with timeout
+                # Graceful shutdown with extended timeout for Telegram session cleanup
                 kill -TERM "$pid" 2>/dev/null
                 
-                # Wait up to 5 seconds for graceful shutdown
-                local timeout=5
+                # Wait up to 15 seconds for graceful shutdown (increased for Telegram cleanup)
+                local timeout=15
+                print_status "Waiting for $name to finish Telegram connections..."
                 while [[ $timeout -gt 0 ]] && kill -0 "$pid" 2>/dev/null; do
                     sleep 1
                     timeout=$((timeout - 1))
+                    if [[ $timeout -eq 10 ]]; then
+                        print_status "Still waiting for $name (Telegram session cleanup)..."
+                    fi
                 done
                 
                 # Force kill if still running
