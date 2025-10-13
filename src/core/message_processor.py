@@ -5,6 +5,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from src.core import log_handling as lh
 from src.integrations.openai_utils import OpenAIProcessor
+from src.integrations.translation_utils import TranslationProcessor
 
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -22,7 +23,9 @@ class MessageProcessor:
     
     def __init__(self, openai_processor=None):
         self.openai_processor = openai_processor
+        self.translation_processor = TranslationProcessor(openai_processor=openai_processor)
     
+
     def detectLanguage(self, text):
         """
         Detect the language of the text using heuristic analysis.
@@ -131,6 +134,7 @@ class MessageProcessor:
             
             return 'unknown'
     
+
     def _isLikelyEnglish(self, text):
         """
         Legacy method for backward compatibility.
@@ -138,6 +142,7 @@ class MessageProcessor:
         """
         return self.detectLanguage(text) == 'english'
     
+
     def _matchesWholeWord(self, keyword, text):
         """
         Helper function for whole-word keyword matching to prevent false positives.
@@ -148,6 +153,7 @@ class MessageProcessor:
         pattern = r'\b' + re.escape(keyword.lower()) + r'\b'
         return bool(re.search(pattern, text.lower()))
     
+
     def isMessageSignificant(self, message, significant_keywords=None, trivial_keywords=None, exclude_keywords=None, country_config=None):
         """
         Determine if a message is significant using dual-language keyword matching
@@ -164,8 +170,7 @@ class MessageProcessor:
             # Initialize translation info (no translation performed at this stage)
             translation_info = {
                 'is_english': detected_language == 'english',
-                'original_language': detected_language.title(),
-                'translated_text': None
+                'original_language': detected_language.title()
             }
             
             # Use country-specific keywords if provided
@@ -265,33 +270,22 @@ class MessageProcessor:
             except Exception as admin_error:
                 LOGGER.writeLog(f"Failed to send message processing error to admin: {admin_error}")
             
-            return False, [], "error", {'is_english': True, 'original_language': 'Unknown', 'translated_text': None}
+            return False, [], "error", {'is_english': True, 'original_language': 'Unknown'}
     
+
     def _analyzeWithAI(self, message, significant_keywords, trivial_keywords, country_config, translation_info):
         """
         Delegate AI analysis to OpenAIProcessor when keyword matching is inconclusive.
+        OpenAI can analyze non-English messages directly without pre-translation.
         """
         if not self.openai_processor:
             LOGGER.writeLog('MessageProcessor: No OpenAI processor available for AI analysis')
             return False, [], "ai_unavailable", translation_info
         
         try:
-            # Check if message needs translation for AI analysis
-            if translation_info['original_language'].lower() != 'english':
-                # Get translation for AI analysis
-                LOGGER.writeLog('MessageProcessor: Getting translation for AI analysis')
-                is_english, translated_text, detected_lang = self.openai_processor.detectLanguageAndTranslate(message)
-                if not is_english and translated_text != message:
-                    message_for_ai = translated_text
-                    translation_info['translated_text'] = translated_text
-                else:
-                    message_for_ai = message
-            else:
-                message_for_ai = message
-            
-            # Use OpenAI for analysis
+            # Use OpenAI for analysis - it can handle non-English messages directly
             is_significant, keywords, method = self.openai_processor._analyzeWithAI(
-                message_for_ai, significant_keywords, trivial_keywords, country_config
+                message, significant_keywords, trivial_keywords, country_config
             )
             
             return is_significant, keywords, method, translation_info
@@ -308,10 +302,91 @@ class MessageProcessor:
                     "MessageProcessor._analyzeWithAI",
                     additional_context={
                         "message_length": len(message) if message else 0,
-                        "translation_required": translation_info.get('original_language', 'Unknown') != 'English'
+                        "original_language": translation_info.get('original_language', 'Unknown')
                     }
                 )
             except Exception as admin_error:
                 LOGGER.writeLog(f"Failed to send AI analysis error to admin: {admin_error}")
             
             return False, [], "ai_error", translation_info
+    
+
+    def translateMessage(self, message, country_config=None, source_language=None):
+        """
+        Translate a message to English using configured translation method.
+        
+        Args:
+            message (str): The message text to translate
+            country_config (dict): Country-specific configuration containing translation settings
+            source_language (str): Already detected source language (avoids redundant detection)
+            
+        Returns:
+            dict: Translation result containing:
+                - success (bool): Whether translation was successful
+                - translated_text (str): The translated text (or original if no translation needed)
+                - original_text (str): The original message text
+                - detected_language (str): The detected language of the original text
+                - was_translated (bool): Whether translation actually occurred
+                - translation_method (str): The method used for translation
+        """
+        try:
+            if not message or not message.strip():
+                LOGGER.writeLog('MessageProcessor: Empty message provided for translation')
+                return {
+                    'success': False,
+                    'translated_text': message or '',
+                    'original_text': message or '',
+                    'detected_language': 'Unknown',
+                    'was_translated': False,
+                    'translation_method': 'empty_message'
+                }
+            
+            # Get translation settings from country config
+            use_ai_for_translation = False
+            if country_config and 'message_filtering' in country_config:
+                filtering = country_config['message_filtering']
+                use_ai_for_translation = filtering.get('use_ai_for_translation', False)
+            
+            LOGGER.writeLog(f'MessageProcessor: Translating message using {"OpenAI" if use_ai_for_translation else "Google Translate"}')
+            
+            # Use the translation processor with provided language info to avoid redundant detection
+            translation_result = self.translation_processor.translate(
+                text=message,
+                use_ai=use_ai_for_translation,
+                source_language=source_language
+            )
+            
+            # Log translation result
+            if translation_result['was_translated']:
+                LOGGER.writeLog(f'MessageProcessor: Message translated from {translation_result["detected_language"]} to English using {translation_result["translation_method"]}')
+            else:
+                LOGGER.writeLog(f'MessageProcessor: Message already in English or translation not needed')
+            
+            return translation_result
+            
+        except Exception as e:
+            LOGGER.writeLog(f'MessageProcessor: translateMessage - Exception: {e}')
+            
+            # Send critical exception to admin for translation errors
+            try:
+                from src.integrations.teams_utils import send_critical_exception
+                send_critical_exception(
+                    "MessageTranslationError",
+                    str(e),
+                    "MessageProcessor.translateMessage",
+                    additional_context={
+                        "message_length": len(message) if message else 0,
+                        "use_ai": use_ai_for_translation if 'use_ai_for_translation' in locals() else None
+                    }
+                )
+            except Exception as admin_error:
+                LOGGER.writeLog(f"Failed to send message translation error to admin: {admin_error}")
+            
+            return {
+                'success': False,
+                'translated_text': message or '',
+                'original_text': message or '',
+                'detected_language': 'Unknown',
+                'was_translated': False,
+                'translation_method': 'error'
+            }

@@ -160,6 +160,80 @@ class OpenAIProcessor:
          return True, text, "Unknown"
 
 
+   def translateToEnglish(self, text, source_language="Unknown"):
+      """
+      Translate text to English without language detection (for when language is already known)
+      
+      Args:
+         text (str): Text to translate
+         source_language (str): Known source language (optional, for context)
+         
+      Returns:
+         tuple: (success, translated_text)
+      """
+      try:
+         if not text or not text.strip():
+            return False, text
+            
+         prompt = f"""
+         Translate the following text to English. If it's already in English, return it as is.
+         {"Source language: " + source_language if source_language != "Unknown" else ""}
+         
+         Text to translate: "{text}"
+         
+         Provide only the English translation without any additional explanation.
+         """
+
+         response = self.openai_client.chat.completions.create(
+            model=self.openai_model,
+            messages=[
+               {"role": "system", "content": "You are a professional translator. Provide accurate English translations."},
+               {"role": "user", "content": prompt}
+            ],
+            max_tokens=self.max_tokens,
+            temperature=0.3  # Lower temperature for more consistent translations
+         )
+
+         if response.choices[0] and response.choices[0].message.content:
+            translated_text = response.choices[0].message.content.strip()
+            
+            # Remove any quotes that might be added by the AI
+            if translated_text.startswith('"') and translated_text.endswith('"'):
+               translated_text = translated_text[1:-1]
+            elif translated_text.startswith("'") and translated_text.endswith("'"):
+               translated_text = translated_text[1:-1]
+            
+            LOGGER.writeLog(f'OpenAIProcessor: Translation successful from {source_language} to English')
+            return True, translated_text
+         
+         # Fallback
+         LOGGER.writeLog('OpenAIProcessor: Translation failed, no response content')
+         return False, text
+         
+      except Exception as e:
+         LOGGER.writeLog(f'OpenAIProcessor: translateToEnglish - Exception: {e}')
+         self._error_count += 1
+         
+         # Send critical exception to admin for OpenAI translation failures
+         if self._error_count % 10 == 0:  # Every 10th error
+            try:
+               from .teams_utils import send_critical_exception
+               send_critical_exception(
+                  "OpenAITranslationOnlyError",
+                  str(e),
+                  "OpenAIProcessor.translateToEnglish",
+                  additional_context={
+                     "text_length": len(text) if text else 0,
+                     "source_language": source_language,
+                     "error_count": self._error_count
+                  }
+               )
+            except Exception as admin_error:
+               LOGGER.writeLog(f"Failed to send OpenAI translation error to admin: {admin_error}")
+         
+         return False, text
+
+
    def isMessageSignificant(self, message, significant_keywords=None, trivial_keywords=None, exclude_keywords=None, country_config=None):
       """
       Backward compatibility wrapper that delegates to MessageProcessor.

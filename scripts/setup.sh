@@ -143,6 +143,21 @@ if [ ! -f "config/config_sample.json" ]; then
             "file_name": "Philippines_Telegram_Feed.xlsx",
             "significant_sheet": "Significant",
             "trivial_sheet": "Trivial"
+         },
+         "message_filtering": {
+            "use_ai_for_message_filtering": false,
+            "translate_trivial_msgs": true,
+            "use_ai_for_translation": false,
+            "significant_keywords": [
+               "breaking news", "alert", "urgent", "emergency", "crisis", "attack", "security",
+               "cyber", "breach", "hack", "vulnerability", "malware", "ransomware", "phishing"
+            ],
+            "trivial_keywords": [
+               "weather", "sports", "entertainment", "celebrity", "gossip", "fashion", "food"
+            ],
+            "exclude_keywords": [
+               "advertisement", "promo", "discount", "sale", "buy now", "limited time"
+            ]
          }
       },
       "singapore": {
@@ -156,6 +171,21 @@ if [ ! -f "config/config_sample.json" ]; then
             "file_name": "Singapore_Telegram_Feed.xlsx",
             "significant_sheet": "Significant", 
             "trivial_sheet": "Trivial"
+         },
+         "message_filtering": {
+            "use_ai_for_message_filtering": false,
+            "translate_trivial_msgs": true,
+            "use_ai_for_translation": false,
+            "significant_keywords": [
+               "breaking news", "alert", "urgent", "emergency", "crisis", "attack", "security",
+               "cyber", "breach", "hack", "vulnerability", "malware", "ransomware", "phishing"
+            ],
+            "trivial_keywords": [
+               "weather", "sports", "entertainment", "celebrity", "gossip", "fashion", "food"
+            ],
+            "exclude_keywords": [
+               "advertisement", "promo", "discount", "sale", "buy now", "limited time"
+            ]
          }
       },
       "malaysia": {
@@ -169,6 +199,21 @@ if [ ! -f "config/config_sample.json" ]; then
             "file_name": "Malaysia_Telegram_Feed.xlsx",
             "significant_sheet": "Significant",
             "trivial_sheet": "Trivial"
+         },
+         "message_filtering": {
+            "use_ai_for_message_filtering": false,
+            "translate_trivial_msgs": true,
+            "use_ai_for_translation": false,
+            "significant_keywords": [
+               "breaking news", "alert", "urgent", "emergency", "crisis", "attack", "security",
+               "cyber", "breach", "hack", "vulnerability", "malware", "ransomware", "phishing"
+            ],
+            "trivial_keywords": [
+               "weather", "sports", "entertainment", "celebrity", "gossip", "fashion", "food"
+            ],
+            "exclude_keywords": [
+               "advertisement", "promo", "discount", "sale", "buy now", "limited time"
+            ]
          }
       }
    },
@@ -179,20 +224,6 @@ if [ ! -f "config/config_sample.json" ]; then
       "SharepointSite": "your_sharepoint_site",
       "StartingCell": "A1",
       "RangeAddressToClear": "A1:Z800"
-   },
-   "MESSAGE_FILTERING": {
-      "SIGNIFICANT_KEYWORDS": [
-         "breaking news", "alert", "urgent", "emergency", "crisis", "attack", "security", 
-         "cyber", "breach", "hack", "vulnerability", "malware", "ransomware", "phishing",
-         "data leak", "incident", "threat", "suspicious", "fraud", "scam", "investigation"
-      ],
-      "TRIVIAL_KEYWORDS": [
-         "weather", "sports", "entertainment", "celebrity", "gossip", "fashion", "food",
-         "travel", "lifestyle", "health tips", "recipe", "horoscope", "quiz", "game"
-      ],
-      "EXCLUDE_KEYWORDS": [
-         "advertisement", "promo", "discount", "sale", "buy now", "limited time"
-      ]
    },
    "TELEGRAM_EXCEL_FIELDS": [
       "Message_ID", "Channel", "Country", "Date", "Time", "Author", "Message_Text", 

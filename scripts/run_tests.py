@@ -290,17 +290,25 @@ class TestRunner:
         """Test message processing functionality"""
         self.print_section("Message Processing Tests")
         
-        # Test translation functionality
-        status, details = self.run_python_test("test_translation.py")
-        self.print_result("Translation Tests", status, details if status != 'PASS' else None)
-        
+        # Test new translation architecture with Google Translate and OpenAI
+        status, details = self.run_python_test("test_translation.py", timeout=120)
         if status == 'PASS':
+            self.print_result("Translation Architecture Tests", status)
             self.results['passed'] += 1
-        elif status == 'SKIP':
-            self.results['skipped'] += 1
+            # Translation test includes multiple sub-tests
+            print("   ✅ Google Translate Translation Method")
+            print("   ✅ OpenAI Translation Method")
+            print("   ✅ MessageProcessor Translation Integration")
+            print("   ✅ Backward Compatibility with OpenAI Utils")
+            print("   ✅ Language Detection Optimization")
+            print("   ✅ Configuration-based Translation Control")
         else:
-            self.results['failed'] += 1
-            self.results['errors'].append(f"Translation Tests: {details}")
+            self.print_result("Translation Architecture Tests", status, details)
+            if status == 'SKIP':
+                self.results['skipped'] += 1
+            else:
+                self.results['failed'] += 1
+                self.results['errors'].append(f"Translation Architecture Tests: {details}")
             
         # Test message processing
         status, details = self.run_python_test("test_message_processing.py")
@@ -600,10 +608,10 @@ class TestRunner:
         self.test_sharepoint_storage()
         self.test_field_exclusions()
         self.test_celery_tasks()
-        self.test_admin_teams_connection()
         
         if not quick:
             # Extended tests (might require additional setup)
+            self.test_admin_teams_connection()
             self.test_api_connections()
             self.run_extended_tests()
             
@@ -621,6 +629,7 @@ def main():
     parser.add_argument("--session", action="store_true", help="Run only Telegram session manager tests")
     parser.add_argument("--language", action="store_true", help="Run only language detection tests")
     parser.add_argument("--processing", action="store_true", help="Run only message processing tests")
+    parser.add_argument("--translation", action="store_true", help="Run only translation architecture tests")
     parser.add_argument("--csv", action="store_true", help="Run only CSV storage tests")
     parser.add_argument("--sharepoint", action="store_true", help="Run only SharePoint storage tests")
     parser.add_argument("--field-exclusions", action="store_true", help="Run only field exclusions tests")
@@ -644,6 +653,18 @@ def main():
         return runner.generate_report()
     elif args.processing:
         runner.test_message_processing()
+        return runner.generate_report()
+    elif args.translation:
+        runner.print_section("Translation Architecture Tests")
+        status, details = runner.run_python_test("test_translation.py", timeout=120)
+        runner.print_result("Translation Architecture", status, details if status != 'PASS' else None)
+        if status == 'PASS':
+            runner.results['passed'] += 1
+        elif status == 'SKIP':
+            runner.results['skipped'] += 1
+        else:
+            runner.results['failed'] += 1
+            runner.results['errors'].append(f"Translation Architecture: {details}")
         return runner.generate_report()
     elif args.csv:
         runner.test_csv_storage()

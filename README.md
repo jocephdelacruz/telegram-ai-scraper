@@ -10,8 +10,9 @@ An intelligent, high-performance Telegram message scraper that uses OpenAI to an
 - **Resilient Error Handling**: Smart retry logic with graceful degradation for API issues and rate limiting
 - **Distributed Processing**: Uses Celery workers for parallel processing of AI analysis, notifications, and data storage
 - **Intelligent Message Filtering**: Country-specific keyword filtering with AI fallback for optimal performance and accuracy
-- **Multi-language Support**: Automatic language detection and translation to English for non-English messages
-- **Cost-effective Translation**: Smart heuristics to avoid unnecessary API calls for obviously English text
+- **Advanced Translation Architecture**: Modular translation system with Google Translate (free) and OpenAI (paid) backends
+- **Smart Translation Control**: Configure whether to translate trivial messages and which translation method to use
+- **Optimized Language Detection**: Reuses language detection from message analysis to avoid redundant API calls
 - **Teams Integration**: Sends formatted alerts to Microsoft Teams channels for significant messages
 - **SharePoint Storage**: Automatically stores all messages (significant and trivial) in SharePoint Excel files with translation info
 - **Historical Scraping**: Can scrape and analyze past messages from channels
@@ -161,6 +162,45 @@ python3 -c "from src.integrations.teams_utils import send_critical_exception; se
 - **Message Routing**: Messages automatically routed based on source channel
 - **Cultural Context**: Keywords tailored to local politics, geography, and events for each country
 - **Modular Architecture**: Separation of concerns with `MessageProcessor` (non-AI logic) and `OpenAIProcessor` (AI-specific logic)
+
+### Advanced Translation System
+
+The system now features a **sophisticated translation architecture** that separates message analysis from translation processing:
+
+#### Translation Configuration Options
+
+```json
+"message_filtering": {
+  "use_ai_for_message_filtering": false,
+  "translate_trivial_msgs": true,
+  "use_ai_for_translation": false
+}
+```
+
+- **`translate_trivial_msgs`**: Control whether to translate trivial messages (saves costs)
+- **`use_ai_for_translation`**: Choose between Google Translate (free) and OpenAI (paid)
+
+#### Translation Methods
+
+| Method | Cost | Quality | Speed | Best For |
+|--------|------|---------|-------|----------|
+| **Google Translate** | Free (rate limited) | Good | Fast | High-volume processing |
+| **OpenAI Translation** | Paid (API credits) | Excellent | Moderate | Critical messages, quality focus |
+
+#### Key Benefits
+
+- **No Redundant Detection**: Reuses language detection from message significance analysis
+- **Flexible Translation Control**: Skip translation for trivial messages to reduce costs
+- **Automatic Fallback**: Google Translate failures automatically fall back to OpenAI
+- **Optimized Performance**: Eliminates duplicate language detection API calls
+- **Modular Design**: Easy to add new translation backends (Azure, DeepL, etc.)
+
+#### Processing Flow
+
+1. **Message Analysis**: Detect language and determine significance using keywords/AI
+2. **Translation Decision**: Based on significance and `translate_trivial_msgs` setting
+3. **Translation Execution**: Use configured method (Google/OpenAI) with known source language
+4. **Storage & Alerts**: Store both original and translated text, send appropriate notifications
 
 ### Iraq Message Filtering Example
 

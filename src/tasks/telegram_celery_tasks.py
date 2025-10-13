@@ -90,22 +90,55 @@ def process_telegram_message(self, message_data, config):
             country_config=country_config
         )
         
-        # Handle translation - use translated text for storage and alerts
+        # Handle translation separately based on configuration
         original_text = message_data['text']
-        if not translation_info['is_english'] and translation_info['translated_text']:
-            # Use translated text for storage and alerts
-            message_data['text'] = translation_info['translated_text']
-            message_data['Message_Text'] = translation_info['translated_text']
-            # Store original text and language info
-            message_data['Original_Text'] = original_text
-            message_data['Original_Language'] = translation_info['original_language']
-            message_data['Was_Translated'] = True
-            LOGGER.writeLog(f"Message {message_id} translated from {translation_info['original_language']} to English")
+        should_translate = False
+        
+        # Check if we should translate this message
+        if country_config and 'message_filtering' in country_config:
+            filtering = country_config['message_filtering']
+            translate_trivial = filtering.get('translate_trivial_msgs', True)
+            
+            # Translate significant messages always, trivial messages based on config
+            if is_significant or translate_trivial:
+                should_translate = True
         else:
-            # Mark as not translated
+            # Default behavior - translate all messages
+            should_translate = True
+        
+        # Perform translation if needed
+        if should_translate and not translation_info['is_english']:
+            LOGGER.writeLog(f"Translating message {message_id} from {translation_info['original_language']}")
+            translation_result = message_processor.translateMessage(
+                original_text, 
+                country_config, 
+                source_language=translation_info['original_language']
+            )
+            
+            if translation_result['success'] and translation_result['was_translated']:
+                # Use translated text for storage and alerts
+                message_data['text'] = translation_result['translated_text']
+                message_data['Message_Text'] = translation_result['translated_text']
+                message_data['Original_Text'] = original_text
+                message_data['Original_Language'] = translation_result['detected_language']
+                message_data['Was_Translated'] = True
+                LOGGER.writeLog(f"Message {message_id} translated successfully using {translation_result['translation_method']}")
+            else:
+                # Translation failed or not needed
+                message_data['Original_Text'] = original_text
+                message_data['Original_Language'] = translation_info['original_language']
+                message_data['Was_Translated'] = False
+                if not translation_result['success']:
+                    LOGGER.writeLog(f"Translation failed for message {message_id}, using original text")
+        else:
+            # No translation needed or configured
             message_data['Original_Text'] = original_text
             message_data['Original_Language'] = translation_info['original_language']
             message_data['Was_Translated'] = False
+            if should_translate:
+                LOGGER.writeLog(f"Message {message_id} already in English, no translation needed")
+            else:
+                LOGGER.writeLog(f"Translation skipped for {message_data['AI_Category'].lower()} message {message_id}")
         
         # Build analysis result structure
         analysis_result = {
@@ -113,7 +146,7 @@ def process_telegram_message(self, message_data, config):
             'matched_keywords': matched_keywords,
             'classification_method': classification_method,
             'reasoning': f"Classified as {'significant' if is_significant else 'trivial'} using {classification_method}",
-            'translation_info': translation_info
+            'language_info': translation_info
         }
         
         # Add analysis results to message data
