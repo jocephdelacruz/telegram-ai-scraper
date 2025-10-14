@@ -61,6 +61,7 @@ class TelegramScraper:
             
             raise
 
+
     async def _ensure_client(self):
         """Ensure we have a working client connection with improved error handling"""
         try:
@@ -73,6 +74,7 @@ class TelegramScraper:
             # The session manager already provides detailed error classification
             # Just re-raise the specific exception types
             raise
+
 
     async def start_client(self):
         """Start the Telegram client using the advanced session manager"""
@@ -148,7 +150,6 @@ class TelegramScraper:
             raise
 
 
-
     async def stop_client(self):
         """Stop the Telegram client using the session manager"""
         try:
@@ -158,21 +159,26 @@ class TelegramScraper:
         except Exception as e:
             LOGGER.writeLog(f"Error stopping Telegram client: {e}")
 
+
     def get_session_status(self):
         """Get current session status information"""
         return self.session_manager.get_connection_status()
+
 
     def is_rate_limited(self):
         """Check if currently rate limited"""
         return self.session_manager.is_rate_limited()
 
+
     def get_rate_limit_info(self):
         """Get rate limit information"""
         return self.session_manager.get_rate_limit_info()
 
+
     async def health_check(self):
         """Perform a comprehensive health check"""
         return await self.session_manager.health_check()
+
 
     async def get_channel_entity(self, channel_username):
         """Get channel entity by username"""
@@ -184,6 +190,7 @@ class TelegramScraper:
         except Exception as e:
             LOGGER.writeLog(f"Failed to get entity for channel {channel_username}: {e}")
             return None
+
 
     async def get_channel_messages(self, channel_username, limit=10, cutoff_time=None, redis_client=None, log_found_messages=True):
         """
@@ -307,6 +314,7 @@ class TelegramScraper:
             
             return []
 
+
     async def parse_message(self, message, channel_username):
         """
         Parse a Telegram message into a structured format
@@ -383,9 +391,11 @@ class TelegramScraper:
             LOGGER.writeLog(f"Error parsing message {message.id}: {e}")
             return None
 
+
     def set_message_handler(self, handler_function):
         """Set a custom message handler function"""
         self.message_handler = handler_function
+
 
     async def start_monitoring(self, channels):
         """
@@ -458,6 +468,7 @@ class TelegramScraper:
             except Exception as admin_error:
                 LOGGER.writeLog(f"Failed to send monitoring error to admin: {admin_error}")
 
+
     async def get_channel_info(self, channel_username):
         """Get information about a channel"""
         try:
@@ -480,6 +491,7 @@ class TelegramScraper:
         except Exception as e:
             LOGGER.writeLog(f"Failed to get info for channel {channel_username}: {e}")
             return None
+
 
     async def search_messages(self, channel_username, query, limit=50):
         """
