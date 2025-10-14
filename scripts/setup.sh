@@ -318,8 +318,8 @@ if [ "$CONFIG_EXISTS" = true ] && [ "$TELEGRAM_CONFIGURED" = true ]; then
     # Check if session file already exists
     if [ -f "telegram_session.session" ]; then
         echo "✅ Telegram session file already exists"
-        echo "If you need to re-authenticate, delete telegram_session.session and run:"
-        echo "python3 scripts/telegram_auth.py"
+        echo "If you need to re-authenticate, run:"
+        echo "./scripts/telegram_session.sh auth"
     else
         echo "📱 Telegram authentication required for first-time setup"
         echo "This will prompt you to enter SMS verification code from your phone"
@@ -329,18 +329,18 @@ if [ "$CONFIG_EXISTS" = true ] && [ "$TELEGRAM_CONFIGURED" = true ]; then
         if [ "$auth_now" = "y" ] || [ "$auth_now" = "Y" ]; then
             echo ""
             echo "Starting Telegram authentication..."
-            python3 scripts/telegram_auth.py
+            ./scripts/telegram_session.sh auth
             
             if [ $? -eq 0 ]; then
                 echo "✅ Telegram authentication completed successfully!"
             else
                 echo "❌ Telegram authentication failed"
-                echo "You can retry later with: python3 scripts/telegram_auth.py"
+                echo "You can retry later with: ./scripts/telegram_session.sh auth"
             fi
         else
             echo ""
             echo "⚠️  Telegram authentication skipped"
-            echo "Run this command when ready: python3 scripts/telegram_auth.py"
+            echo "Run this command when ready: ./scripts/telegram_session.sh auth"
         fi
     fi
 fi
@@ -351,18 +351,18 @@ echo "==========="
 if [ "$CONFIG_EXISTS" = false ]; then
     echo "1. Configure your API keys: cp config/config_sample.json config/config.json"
     echo "2. Edit config/config.json with actual values"
-    echo "3. Run Telegram authentication: python3 scripts/telegram_auth.py"
+    echo "3. Run Telegram authentication: ./scripts/telegram_session.sh auth"
     echo "4. Start the system: ./scripts/quick_start.sh"
 elif [ ! -f "telegram_session.session" ]; then
-    echo "1. Run Telegram authentication: python3 scripts/telegram_auth.py"
+    echo "1. Run Telegram authentication: ./scripts/telegram_session.sh auth"
     echo "2. Start the system: ./scripts/quick_start.sh"
 else
     echo "✅ System ready! Start with: ./scripts/quick_start.sh"
     echo ""
     echo "📱 Session Management (available anytime):"
-    echo "   • Check session: python3 scripts/telegram_auth.py --status"
-    echo "   • Test session: python3 scripts/telegram_auth.py --test (no SMS)"
-    echo "   • Renew session: python3 scripts/telegram_auth.py --safe-renew"
+    echo "   • Check session: ./scripts/telegram_session.sh status"
+    echo "   • Test session: ./scripts/telegram_session.sh test (no SMS)"
+    echo "   • Renew session: ./scripts/telegram_session.sh renew"
 fi
 echo ""
 echo "Manual Deployment:"

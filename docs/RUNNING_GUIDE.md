@@ -226,15 +226,21 @@ Starting Telegram AI Scraper Monitoring
 # Verify setup
 ./scripts/verify_setup.sh
 
-# Telegram credential validation and management (RECOMMENDED)
+# 🔐 Session Management (RECOMMENDED - Unified Interface)
+./scripts/telegram_session.sh status      # Check session status
+./scripts/telegram_session.sh test        # Test session validity
+./scripts/telegram_session.sh auth        # Authenticate new session
+./scripts/telegram_session.sh renew       # Renew existing session
+./scripts/telegram_session.sh safety-check # Check for conflicts
+./scripts/telegram_session.sh diagnostics # Full diagnostics
+./scripts/telegram_session.sh help        # Show all options
+
+# Telegram credential validation (before session operations)
 python3 tests/validate_telegram_config.py
 # - Comprehensive validation of API credentials
 # - Network connectivity testing
 # - Interactive credential updates
 # - Environment dependency checking
-
-# Manual Telegram authentication (after validation passes)
-python3 scripts/telegram_auth.py
 
 # Stop all services
 ./scripts/deploy_celery.sh stop

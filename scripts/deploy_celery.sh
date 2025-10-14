@@ -497,10 +497,10 @@ case "${1:-deploy}" in
                 print_status "Session Status:"
                 if [ -f "telegram_session.session" ]; then
                     echo "✅ Session file exists"
-                    echo "   💡 Check status: python3 scripts/telegram_auth.py --status"
+                    echo "   💡 Check status: ./scripts/telegram_session.sh status"
                 else
                     echo "❌ No session file - authentication needed"
-                    echo "   💡 Authenticate: python3 scripts/telegram_auth.py"
+                    echo "   💡 Authenticate: ./scripts/telegram_session.sh auth"
                 fi
                 echo ""
                 echo "To start monitoring:"

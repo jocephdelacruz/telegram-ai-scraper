@@ -24,14 +24,21 @@
 - **Automatic lock cleanup** on process termination
 - **`_acquire_session_lock()`** and **`_release_session_lock()`** methods
 - **Extended disconnect timeout** (10s) for graceful session cleanup
-### **3. Enhanced Session Management Tools**
-- **`scripts/telegram_auth.py`** - Comprehensive session management with safety integration
-  - `--status` - Session age, size, and recommendations
-  - `--test` - Validate session without SMS requirement
-  - `--backup` - Create timestamped session backups
-  - `--renew` - Force renewal with backup
-  - `--safe-renew` - Complete workflow (stop workers → renew → restart)
-- **`scripts/check_session_safety.py`** - CLI tool for pre-operation safety validation
+### **3. Unified Session Management Interface**
+- **`scripts/telegram_session.sh`** - 🔐 **Comprehensive unified wrapper** (NEW - RECOMMENDED)
+  - `status` - Session age, size, and recommendations
+  - `test` - Validate session without SMS requirement  
+  - `auth` - Interactive authentication with safety checks
+  - `renew` - Safe renewal workflow with automatic worker management
+  - `backup` - Create timestamped session backups
+  - `restore` - Interactive restore from backup selection
+  - `safety-check` - Check for session conflicts
+  - `diagnostics` - Full session diagnostics and recovery
+  - `help` - Comprehensive usage documentation
+- **Backend Python Scripts**:
+  - **`scripts/telegram_auth.py`** - Session management backend
+  - **`scripts/check_session_safety.py`** - Session conflict detection backend
+  - **`scripts/telegram_session_check.py`** - Session diagnostics backend
 - **Enhanced worker detection** in all Telegram-accessing scripts
 - **Graceful shutdown improvement** - Extended timeout from 5s to 15s in `deploy_celery.sh`
 
@@ -100,17 +107,22 @@ README.md                                       # Updated with enhanced session 
 
 ## 🛠 **Enhanced Usage Examples**
 
-### **Proactive Session Management (Recommended)**
+### **Unified Session Management (Recommended)**
 ```bash
-# Check session status proactively (no SMS needed)
+# ⭐ Use the unified wrapper for all session operations
+./scripts/telegram_session.sh status      # Shows age, recommendations
+./scripts/telegram_session.sh test        # Tests if session works
+./scripts/telegram_session.sh renew       # Safe renewal with automatic worker management
+./scripts/telegram_session.sh backup      # Timestamped backup
+./scripts/telegram_session.sh restore     # Interactive restore from backup
+./scripts/telegram_session.sh safety-check # Check for conflicts
+./scripts/telegram_session.sh diagnostics # Full session diagnostics
+./scripts/telegram_session.sh help        # Show all options
+
+# Alternative: Direct Python backend access (advanced users)
 python3 scripts/telegram_auth.py --status     # Shows age, recommendations
-python3 scripts/telegram_auth.py --test       # Tests if session works
-
-# Renew at YOUR convenient time (when you can receive SMS)
 python3 scripts/telegram_auth.py --safe-renew # Complete safe workflow
-
-# Create backups before important operations
-python3 scripts/telegram_auth.py --backup     # Timestamped backup
+python3 scripts/check_session_safety.py       # Check for conflicts
 ```
 
 ### **Safe Operation Workflow**
@@ -130,7 +142,10 @@ python3 your_debug_script.py
 
 ### **Session Safety Validation**
 ```bash
-# Check for session conflicts
+# Check for session conflicts (RECOMMENDED)
+./scripts/telegram_session.sh safety-check
+
+# Alternative: Direct backend access
 python3 scripts/check_session_safety.py
 
 # Expected outputs:

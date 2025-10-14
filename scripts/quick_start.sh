@@ -95,19 +95,19 @@ if [ ! -f "telegram_session.session" ]; then
         
         if [ "$auth_now" = "y" ] || [ "$auth_now" = "Y" ]; then
             print_status "Starting SAFE Telegram authentication (session conflict protection enabled)..."
-            python3 scripts/telegram_auth.py
+            ./scripts/telegram_session.sh auth
             
             if [ $? -eq 0 ]; then
                 print_success "Telegram authentication completed safely!"
             else
                 print_error "Telegram authentication failed"
-                print_error "Please run manually: python3 scripts/telegram_auth.py"
+                print_error "Please run manually: ./scripts/telegram_session.sh auth"
                 exit 1
             fi
         else
             print_warning "Telegram authentication skipped"
             print_warning "Some features may not work without authentication"
-            print_warning "Run later with: python3 scripts/telegram_auth.py"
+            print_warning "Run later with: ./scripts/telegram_session.sh auth"
         fi
     else
         print_warning "config/config.json missing or incomplete"

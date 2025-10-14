@@ -70,11 +70,11 @@ case "$MODE" in
         echo "$result"
         
         # Check if Telegram authentication is needed
-        if echo "$result" | grep -q "Run: python3 scripts/telegram_auth.py"; then
+        if echo "$result" | grep -q "Run: ./scripts/telegram_session.sh auth"; then
             echo ""
             echo -e "${YELLOW}🔧 Telegram authentication required!${NC}"
             echo -e "${YELLOW}Run the following command to authenticate:${NC}"
-            echo -e "${GREEN}python3 scripts/telegram_auth.py${NC}"
+            echo -e "${GREEN}./scripts/telegram_session.sh auth${NC}"
             echo ""
         fi
         

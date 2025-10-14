@@ -112,7 +112,7 @@ else:
         if [ -n "$age_num" ]; then
             if [ "$age_num" -gt 30 ]; then
                 echo "  ⚠️  Session >30 days old - consider renewal"
-                echo "  💡 Renew: python3 scripts/telegram_auth.py --safe-renew"
+                echo "  💡 Renew: ./scripts/telegram_session.sh renew"
             elif [ "$age_num" -gt 14 ]; then
                 echo "  💡 Session >2 weeks old - renewal available if needed"
             else
@@ -124,7 +124,7 @@ else:
     fi
 else
     echo "✗ No Telegram session file"
-    echo "  💡 Authenticate: python3 scripts/telegram_auth.py"
+    echo "  💡 Authenticate: ./scripts/telegram_session.sh auth"
 fi
 
 # Overall status
@@ -170,9 +170,9 @@ echo "Test system:   python3 src/core/main.py --mode test"
 echo ""
 echo "Session Management:"
 echo "──────────────────"
-echo "Check session: python3 scripts/telegram_auth.py --status"
-echo "Test session:  python3 scripts/telegram_auth.py --test"
-echo "Renew session: python3 scripts/telegram_auth.py --safe-renew"
+echo "Check session: ./scripts/telegram_session.sh status"
+echo "Test session:  ./scripts/telegram_session.sh test"
+echo "Renew session: ./scripts/telegram_session.sh renew"
 
 # Show recent errors if any
 echo ""
