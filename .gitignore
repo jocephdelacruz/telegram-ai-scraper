@@ -7,4 +7,6 @@ pids/
 *.sqlite3
 *.session
 *.session.lock
+*.session-journal
+*.lock
 flower

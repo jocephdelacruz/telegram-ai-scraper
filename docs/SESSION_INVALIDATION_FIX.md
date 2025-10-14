@@ -61,9 +61,21 @@ The Telegram session invalidation issue you've been experiencing is caused by **
 python3 scripts/check_session_safety.py
 ```
 
-### Protected Authentication
+### Enhanced Session Management
 ```bash
-# Authentication now includes safety checks
+# Check session status and age (no SMS needed)
+python3 scripts/telegram_auth.py --status
+
+# Test session validity without SMS
+python3 scripts/telegram_auth.py --test
+
+# Proactive renewal at your convenient time
+python3 scripts/telegram_auth.py --safe-renew
+
+# Create session backup
+python3 scripts/telegram_auth.py --backup
+
+# Original authentication (includes safety checks)
 python3 scripts/telegram_auth.py
 ```
 
@@ -95,7 +107,19 @@ python3 tests/debug_recent_messages.py
 ./scripts/deploy_celery.sh start
 ```
 
-### **Re-authentication Process:**
+### **Proactive Session Management (Recommended):**
+Be proactive instead of reactive - check and renew sessions at YOUR convenient time:
+
+```bash
+# Weekly check when you're available for SMS
+python3 scripts/telegram_auth.py --status      # Check session age
+python3 scripts/telegram_auth.py --test        # Test validity (no SMS)
+
+# If session is >14 days old or test fails, renew proactively
+python3 scripts/telegram_auth.py --safe-renew  # Complete safe workflow
+```
+
+### **Traditional Re-authentication Process:**
 ```bash
 # Stop workers first
 ./scripts/deploy_celery.sh stop

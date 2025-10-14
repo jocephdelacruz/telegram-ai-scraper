@@ -86,6 +86,47 @@ echo "Monitoring:"
 echo "──────────"
 check_process "Flower Web UI" "$PID_DIR/flower.pid"
 
+# Check Telegram session status (safe - file-based only)
+echo ""
+echo "Telegram Session:"
+echo "────────────────"
+if [ -f "telegram_session.session" ]; then
+    # Check session status using enhanced telegram_auth.py (safe operation)
+    if python3 scripts/telegram_auth.py --status --quiet 2>/dev/null; then
+        # Extract age from status output
+        session_age=$(python3 -c "
+import os
+from datetime import datetime
+if os.path.exists('telegram_session.session'):
+    stat = os.stat('telegram_session.session')
+    modified = datetime.fromtimestamp(stat.st_mtime)
+    age_days = (datetime.now() - modified).days
+    print(f'{age_days} days old')
+else:
+    print('No session file')
+" 2>/dev/null)
+        echo "✓ Session file exists ($session_age)"
+        
+        # Show recommendation based on age
+        age_num=$(echo "$session_age" | grep -o '^[0-9]*')
+        if [ -n "$age_num" ]; then
+            if [ "$age_num" -gt 30 ]; then
+                echo "  ⚠️  Session >30 days old - consider renewal"
+                echo "  💡 Renew: python3 scripts/telegram_auth.py --safe-renew"
+            elif [ "$age_num" -gt 14 ]; then
+                echo "  💡 Session >2 weeks old - renewal available if needed"
+            else
+                echo "  ✓ Session age is acceptable"
+            fi
+        fi
+    else
+        echo "✓ Session file exists (details unavailable)"
+    fi
+else
+    echo "✗ No Telegram session file"
+    echo "  💡 Authenticate: python3 scripts/telegram_auth.py"
+fi
+
 # Overall status
 echo ""
 echo "Overall Status:"
@@ -126,6 +167,12 @@ echo "Stop all:      ./scripts/deploy_celery.sh stop"
 echo "Monitor web:   http://localhost:5555 (if Flower is running)"
 echo "View logs:     tail -f logs/celery_*.log"
 echo "Test system:   python3 src/core/main.py --mode test"
+echo ""
+echo "Session Management:"
+echo "──────────────────"
+echo "Check session: python3 scripts/telegram_auth.py --status"
+echo "Test session:  python3 scripts/telegram_auth.py --test"
+echo "Renew session: python3 scripts/telegram_auth.py --safe-renew"
 
 # Show recent errors if any
 echo ""

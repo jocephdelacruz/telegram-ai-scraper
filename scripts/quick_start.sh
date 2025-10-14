@@ -115,14 +115,6 @@ if [ ! -f "telegram_session.session" ]; then
     fi
 else
     print_success "Telegram session file found"
-    # Verify session safety for existing sessions
-    print_status "Verifying session integrity..."
-    if python3 scripts/check_session_safety.py >/dev/null 2>&1; then
-        print_success "Session integrity verified"
-    else
-        print_warning "Session safety check found potential issues"
-        print_warning "Check with: python3 scripts/check_session_safety.py"
-    fi
 fi
 
 # Step 3: Check configuration
@@ -156,7 +148,7 @@ sleep 15
 # Step 6: Comprehensive system tests
 print_status "6. Running comprehensive system tests..."
 echo ""
-echo "Running quick system validation tests..."
+echo "Running quick system validation tests with session verification..."
 ./scripts/run_tests.sh --quick
 
 test_exit_code=$?

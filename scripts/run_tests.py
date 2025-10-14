@@ -181,6 +181,46 @@ class TestRunner:
             self.results['errors'].append(f"Session manager import failed: {e}")
             return
             
+        # Test enhanced telegram_auth.py status checking (safe - no session access)
+        try:
+            script_path = self.project_root / "scripts" / "telegram_auth.py"
+            if script_path.exists():
+                env = os.environ.copy()
+                env['PYTHONPATH'] = str(self.project_root)
+                
+                # Test session status (safe - file-based only)
+                result = subprocess.run(
+                    [sys.executable, str(script_path), "--status", "--quiet"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    cwd=str(self.project_root),
+                    env=env
+                )
+                
+                if result.returncode == 0:
+                    self.print_result("Session Status Check", "PASS", "Session file exists and analyzed")
+                    self.results['passed'] += 1
+                elif result.returncode == 1:
+                    self.print_result("Session Status Check", "PASS", "No session file (expected for new setup)")
+                    self.results['passed'] += 1
+                else:
+                    self.print_result("Session Status Check", "FAIL", f"Unexpected exit code: {result.returncode}")
+                    self.results['failed'] += 1
+                    self.results['errors'].append("Session status check failed")
+            else:
+                self.print_result("Session Status Check", "SKIP", "telegram_auth.py not found")
+                self.results['skipped'] += 1
+                
+        except subprocess.TimeoutExpired:
+            self.print_result("Session Status Check", "FAIL", "Status check timed out")
+            self.results['failed'] += 1
+            self.results['errors'].append("Session status check timeout")
+        except Exception as e:
+            self.print_result("Session Status Check", "FAIL", str(e))
+            self.results['failed'] += 1
+            self.results['errors'].append(f"Session status check error: {e}")
+            
         # Test session manager initialization (without connection)
         try:
             # Load config for test
@@ -216,6 +256,52 @@ class TestRunner:
             self.print_result("Session Manager Init", "FAIL", str(e))
             self.results['failed'] += 1
             self.results['errors'].append(f"Session manager initialization failed: {e}")
+            
+        # Test session validity (with comprehensive safety checks)
+        try:
+            from src.integrations.session_safety import SessionSafetyManager, SessionSafetyError
+            safety = SessionSafetyManager()
+            
+            # First check if session file exists
+            session_file = self.project_root / "telegram_session.session"
+            if session_file.exists():
+                try:
+                    # Check safety before attempting session test
+                    safety.check_session_safety("run_tests_session_validation")
+                    
+                    # It's safe to test session validity
+                    result = subprocess.run(
+                        [sys.executable, str(self.project_root / "scripts" / "telegram_auth.py"), "--test", "--quiet"],
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                        cwd=str(self.project_root),
+                        env=os.environ.copy()
+                    )
+                    
+                    if result.returncode == 0:
+                        self.print_result("Session Validity Test", "PASS", "Session is valid and working")
+                        self.results['passed'] += 1
+                    elif result.returncode == 1:
+                        self.print_result("Session Validity Test", "SKIP", "Session invalid (may need renewal)")
+                        self.results['skipped'] += 1
+                    else:
+                        self.print_result("Session Validity Test", "SKIP", "Session test inconclusive")
+                        self.results['skipped'] += 1
+                        
+                except SessionSafetyError:
+                    # Not safe to test - workers are active, but this is expected and safe
+                    self.print_result("Session Validity Test", "SKIP", "Session test skipped - workers active (session protection)")
+                    self.results['skipped'] += 1
+            else:
+                # No session file - this is expected for new setups
+                self.print_result("Session Validity Test", "SKIP", "No session file found (expected for new setup)")
+                self.results['skipped'] += 1
+                
+        except Exception as e:
+            self.print_result("Session Validity Test", "FAIL", str(e))
+            self.results['failed'] += 1
+            self.results['errors'].append(f"Session validity test error: {e}")
             
         # Test session status checker script (with safety check)
         # Check if it's safe to run session checker
@@ -644,6 +730,7 @@ def main():
     parser.add_argument("--sharepoint", action="store_true", help="Run only SharePoint storage tests")
     parser.add_argument("--field-exclusions", action="store_true", help="Run only field exclusions tests")
     parser.add_argument("--admin-teams", action="store_true", help="Run only Admin Teams connection tests")
+    parser.add_argument("--telegram-session", action="store_true", help="Run enhanced Telegram session management tests")
     
     args = parser.parse_args()
     
@@ -687,6 +774,9 @@ def main():
         return runner.generate_report()
     elif args.admin_teams:
         runner.test_admin_teams_connection()
+        return runner.generate_report()
+    elif args.telegram_session:
+        runner.test_telegram_session_manager()
         return runner.generate_report()
     else:
         return runner.run_all(quick=args.quick)

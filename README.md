@@ -334,10 +334,19 @@ python3 scripts/check_session_safety.py
 # Session status and health check
 python3 scripts/telegram_session_check.py --quick
 
-# Safe re-authentication process
+# Enhanced session management (all include safety checks)
+python3 scripts/telegram_auth.py --status      # Check session age and info
+python3 scripts/telegram_auth.py --test        # Test validity (no SMS)
+python3 scripts/telegram_auth.py --backup      # Backup current session
+
+# Proactive renewal at YOUR convenient time
+python3 scripts/telegram_auth.py --safe-renew  # Complete safe workflow
+python3 scripts/telegram_auth.py --renew       # Manual renewal process
+
+# Original safe re-authentication process
 ./scripts/deploy_celery.sh stop      # Stop workers first
-python3 scripts/telegram_auth.py    # Authenticate safely
-./scripts/deploy_celery.sh start    # Restart workers
+python3 scripts/telegram_auth.py     # Authenticate safely
+./scripts/deploy_celery.sh start     # Restart workers
 ```
 
 ### Best Practices
@@ -388,7 +397,8 @@ chmod +x scripts/quick_start.sh
 - ✅ Creates all required directories and files
 
 **What quick_start.sh now includes:**
-- ✅ Comprehensive system testing (validates all components)
+- ✅ **Session verification** (via comprehensive test suite)
+- ✅ Comprehensive system testing (validates all components including sessions)
 - ✅ Configuration file structure and required fields validation
 - ✅ Dual-language keyword format validation for Iraq
 - ✅ Language detection and message processing pipeline testing
@@ -413,12 +423,12 @@ chmod +x scripts/quick_start.sh
 |--------|---------|-------------|--------------|
 | `setup.sh` | **Complete one-time setup** | **Once** during first setup | Virtual env, dependencies, config, **Telegram auth** |
 | `quick_start.sh` | **Smart restart sequence** | **After server reboot** or when starting fresh | Auto-detects auth needs, all-in-one startup |
-| `deploy_celery.sh` | **Complete Celery management** | Start/stop/restart background services | Memory-optimized workers, graceful/force stop |
+| `deploy_celery.sh` | **Complete Celery management** | Start/stop/restart background services | Memory-optimized workers, graceful/force stop, **post-deployment session status** |
 | `run_app.sh` | Main application runner | Interactive monitoring/testing | Connection testing, graceful startup |
-| `telegram_auth.py` | Manual Telegram authentication | Re-authentication or troubleshooting | Interactive SMS verification |
+| `telegram_auth.py` | **Comprehensive session management** | Authentication, renewal, testing | `--status`, `--test`, `--renew`, `--safe-renew`, `--backup` with safety protection |
 | `monitor_resources.sh` | System resource monitoring | Check performance and memory usage | Real-time stats, alerts |
 | `auto_restart.sh` | Automatic service recovery | Background watchdog service | Auto-restart failed services |
-| `status.sh` | Service status check | Quick health check | Process status, resource usage |
+| `status.sh` | **Enhanced service status** | Quick health check | Process status, **session age/status**, resource usage, commands |
 | `verify_setup.sh` | System setup validation | Before first run, troubleshooting | Comprehensive system check |
 
 #### Comprehensive Testing System
@@ -428,7 +438,8 @@ chmod +x scripts/quick_start.sh
 | `./scripts/run_tests.sh --quick` | **Essential tests only** | Regular validation, CI/CD | Skips API connections, focuses on core functionality |
 | `./scripts/run_tests.sh --component` | Component testing only | Development and debugging | Tests imports, log handling, file operations |
 | `./scripts/run_tests.sh --config` | Configuration validation | After config changes | Validates JSON structure, required fields, Iraq dual-language format |
-| `./scripts/run_tests.sh --session` | **Session manager tests** | After session changes | Tests session management, status checking, recovery tools |
+| `./scripts/run_tests.sh --session` | **Enhanced session tests** | Session validation | Session status, validity testing (with safety protection), management tools |
+| `./scripts/run_tests.sh --telegram-session` | **Comprehensive session tests** | Full session validation | Status checking, validity testing, safety protection, management integration |
 | `./scripts/run_tests.sh --language` | Language detection tests | Test heuristic detection | Arabic/English detection without OpenAI calls |
 | `./scripts/run_tests.sh --processing` | Message processing tests | Test dual-language logic | Iraq keyword matching, AI toggle, translation |
 | `./scripts/run_tests.sh --csv` | **CSV storage tests** | Test CSV storage pipeline | **PRODUCTION SAFE**: Uses dedicated test CSV files (`TEST_iraq_*.csv`), complete validation, automatic cleanup |
@@ -850,6 +861,13 @@ This guide covers:
 ```bash
 # ALWAYS check before manual operations
 python3 scripts/check_session_safety.py
+
+# Check session status proactively (no SMS needed)
+python3 scripts/telegram_auth.py --status  # Shows age, recommendations
+python3 scripts/telegram_auth.py --test    # Tests if session works
+
+# Proactive renewal at YOUR convenient time (prevents unexpected expiry)
+python3 scripts/telegram_auth.py --safe-renew  # Complete safe workflow
 
 # Safe workflow for testing/debugging
 ./scripts/deploy_celery.sh stop      # Stop workers first

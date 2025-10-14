@@ -491,6 +491,17 @@ case "${1:-deploy}" in
                 if [ -f "$PID_DIR/flower.pid" ]; then
                     echo "- Flower Monitoring: http://localhost:5555"
                 fi
+                
+                # Show basic session status after deployment
+                echo ""
+                print_status "Session Status:"
+                if [ -f "telegram_session.session" ]; then
+                    echo "✅ Session file exists"
+                    echo "   💡 Check status: python3 scripts/telegram_auth.py --status"
+                else
+                    echo "❌ No session file - authentication needed"
+                    echo "   💡 Authenticate: python3 scripts/telegram_auth.py"
+                fi
                 echo ""
                 echo "To start monitoring:"
                 echo "python3 src/core/main.py --mode monitor"

@@ -24,11 +24,16 @@
 - **Automatic lock cleanup** on process termination
 - **`_acquire_session_lock()`** and **`_release_session_lock()`** methods
 - **Extended disconnect timeout** (10s) for graceful session cleanup
-### **3. Session Safety Tools**
+### **3. Enhanced Session Management Tools**
+- **`scripts/telegram_auth.py`** - Comprehensive session management with safety integration
+  - `--status` - Session age, size, and recommendations
+  - `--test` - Validate session without SMS requirement
+  - `--backup` - Create timestamped session backups
+  - `--renew` - Force renewal with backup
+  - `--safe-renew` - Complete workflow (stop workers → renew → restart)
 - **`scripts/check_session_safety.py`** - CLI tool for pre-operation safety validation
 - **Enhanced worker detection** in all Telegram-accessing scripts
 - **Graceful shutdown improvement** - Extended timeout from 5s to 15s in `deploy_celery.sh`
-- **Session conflict warnings** with specific resolution guidance
 
 ### **4. Universal Script Protection**
 - **All Telegram scripts protected** with SessionSafetyManager integration
@@ -57,13 +62,17 @@ src/integrations/telegram_session_manager.py    # Added file locking with fcntl
 src/core/main.py                                # Session safety for test/historical/monitor modes
 src/tasks/telegram_celery_tasks.py              # Enhanced cleanup in fetch_messages_async
 scripts/deploy_celery.sh                        # Extended graceful shutdown (5s→15s)
-scripts/telegram_auth.py                        # Session safety checks before auth
+scripts/telegram_auth.py                        # ENHANCED: Comprehensive session management
+                                               #   - Session status, testing, backup, renewal
+                                               #   - All operations include safety checks
+                                               #   - Proactive renewal workflow
 scripts/run_app.sh                              # Session safety notes
 scripts/run_tests.py                            # Safety checks for telegram tests
+scripts/setup.sh                               # Updated to mention new session features
 tests/debug_recent_messages.py                  # Session safety integration
 tests/debug_message_ages.py                     # Session safety integration  
 tests/test_async_fix.py                         # Session safety integration
-README.md                                       # Session safety system documentation
+README.md                                       # Updated with enhanced session management
 ```
 
 ## 🎯 **Results Achieved**
@@ -89,7 +98,20 @@ README.md                                       # Session safety system document
 - **Process Coordination**: 100% reliable through PID tracking and locks
 - **User Guidance**: Clear warnings and solutions for all conflict scenarios
 
-## 🛠 **Usage Examples**
+## 🛠 **Enhanced Usage Examples**
+
+### **Proactive Session Management (Recommended)**
+```bash
+# Check session status proactively (no SMS needed)
+python3 scripts/telegram_auth.py --status     # Shows age, recommendations
+python3 scripts/telegram_auth.py --test       # Tests if session works
+
+# Renew at YOUR convenient time (when you can receive SMS)
+python3 scripts/telegram_auth.py --safe-renew # Complete safe workflow
+
+# Create backups before important operations
+python3 scripts/telegram_auth.py --backup     # Timestamped backup
+```
 
 ### **Safe Operation Workflow**
 ```bash
@@ -117,12 +139,12 @@ python3 scripts/check_session_safety.py
 # ⚠️ CAUTION: Stale lock detected
 ```
 
-### **Safe Re-authentication Process**
+### **Traditional Safe Re-authentication Process**
 ```bash
 # Stop workers first
 ./scripts/deploy_celery.sh stop
 
-# Re-authenticate safely
+# Re-authenticate safely (original method)
 python3 scripts/telegram_auth.py
 
 # Restart workers  

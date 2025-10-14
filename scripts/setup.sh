@@ -358,6 +358,11 @@ elif [ ! -f "telegram_session.session" ]; then
     echo "2. Start the system: ./scripts/quick_start.sh"
 else
     echo "✅ System ready! Start with: ./scripts/quick_start.sh"
+    echo ""
+    echo "📱 Session Management (available anytime):"
+    echo "   • Check session: python3 scripts/telegram_auth.py --status"
+    echo "   • Test session: python3 scripts/telegram_auth.py --test (no SMS)"
+    echo "   • Renew session: python3 scripts/telegram_auth.py --safe-renew"
 fi
 echo ""
 echo "Manual Deployment:"
