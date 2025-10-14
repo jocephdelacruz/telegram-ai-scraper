@@ -216,11 +216,8 @@ class TeamsNotifier:
         """Get emoji flag for country"""
         flag_map = {
             "Philippines": "🇵🇭",
-            "Singapore": "🇸🇬", 
-            "Malaysia": "🇲🇾",
-            "Thailand": "🇹🇭",
             "Indonesia": "🇮🇩",
-            "Vietnam": "🇻🇳",
+            "Iraq": "🇮🇶",
             "Unknown": "🌏",
             "unknown": "🌏"
         }
