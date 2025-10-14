@@ -452,7 +452,8 @@ chmod +x scripts/quick_start.sh
 |--------|---------|-------------|--------------|
 | `setup.sh` | **Complete one-time setup** | **Once** during first setup | Virtual env, dependencies, config, **Telegram auth** |
 | `quick_start.sh` | **Smart restart sequence** | **After server reboot** or when starting fresh | Auto-detects auth needs, all-in-one startup |
-| `deploy_celery.sh` | **Complete Celery management** | Start/stop/restart background services | Memory-optimized workers, graceful/force stop, **post-deployment session status** |
+| `deploy_celery.sh` | **Complete Celery management** | Start/stop/restart background services | Memory-optimized workers, graceful/force stop, **session lock cleanup** |
+| `safe_shutdown.sh` | **🛑 Comprehensive system shutdown** | **Safe system shutdown** with full cleanup | Session locks, Redis cache, temp files, health summary |
 | `telegram_session.sh` | **🔐 Unified session management** | All session operations | `status`, `test`, `auth`, `renew`, `backup`, `restore`, `safety-check`, `diagnostics` |
 | `telegram_auth.py` | Session management backend | Direct Python access | `--status`, `--test`, `--renew`, `--safe-renew`, `--backup` with safety protection |
 | `monitor_resources.sh` | System resource monitoring | Check performance and memory usage | Real-time stats, alerts |
@@ -490,6 +491,7 @@ chmod +x scripts/quick_start.sh
 **Most Common Usage:**
 - **First time:** `./scripts/setup.sh` (includes config + Telegram auth)
 - **After restart:** `./scripts/quick_start.sh` (includes automatic comprehensive testing)
+- **Safe shutdown:** `./scripts/safe_shutdown.sh` (comprehensive cleanup and shutdown)
 - **Session management:** `./scripts/telegram_session.sh help` (unified session operations)
 - **Manual testing:** `./scripts/run_tests.sh --quick` (when needed for validation)
 - **Check status:** `./scripts/status.sh`
@@ -545,8 +547,11 @@ python3 src/core/main.py --config config/config.json --mode test
 # Access at http://YOUR_SERVER_IP:5555
 # (Flower is automatically started with quick_start.sh)
 
-# Stop all services
+# Stop all services (basic)
 ./scripts/deploy_celery.sh stop
+
+# Stop with comprehensive cleanup (recommended)
+./scripts/safe_shutdown.sh
 ```
 
 ### Command Line Options
@@ -646,7 +651,8 @@ telegram-ai-scraper/
 │   ├── setup.sh                 # Initial environment setup (run once)
 │   ├── quick_start.sh           # Complete restart sequence (after reboot)
 │   ├── telegram_session_check.py # Advanced session status checker and recovery assistant
-│   ├── deploy_celery.sh         # Celery worker management
+│   ├── deploy_celery.sh         # Celery worker management  
+│   ├── safe_shutdown.sh         # 🛑 **Comprehensive system shutdown** (NEW)
 │   ├── monitor_resources.sh     # System resource monitoring
 │   ├── telegram_session.sh      # 🔐 **Unified session management wrapper** (RECOMMENDED)
 │   ├── telegram_auth.py         # Session management backend

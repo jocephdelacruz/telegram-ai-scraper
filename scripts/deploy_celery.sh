@@ -334,6 +334,25 @@ stop_all_workers() {
         fi
     fi
     
+    # Session Safety: Clean up stale session lock files after workers are stopped
+    print_status "Cleaning up stale session lock files..."
+    local lock_files_cleaned=0
+    for lock_file in *.lock 2>/dev/null; do
+        if [ -f "$lock_file" ]; then
+            # Check if lock is stale (older than 5 minutes)
+            if find "$lock_file" -mmin +5 -type f >/dev/null 2>&1; then
+                if rm -f "$lock_file" 2>/dev/null; then
+                    print_success "Removed stale lock: $lock_file"
+                    lock_files_cleaned=$((lock_files_cleaned + 1))
+                fi
+            fi
+        fi
+    done
+    
+    if [ $lock_files_cleaned -gt 0 ]; then
+        print_success "Session safety: Cleaned $lock_files_cleaned stale lock file(s)"
+    fi
+    
     echo ""
     echo "=========================================="
     if [[ $stopped_count -eq $total_services ]] && [[ $total_services -gt 0 ]]; then
