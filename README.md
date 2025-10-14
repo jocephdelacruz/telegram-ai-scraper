@@ -4,10 +4,10 @@ An intelligent, high-performance Telegram message scraper that uses OpenAI to an
 
 ## Features
 
+- **Session-Safe Architecture**: Celery Beat scheduler handles all Telegram operations to prevent session conflicts
 - **Periodic Message Fetching**: Automatically checks for new messages every 3 minutes (configurable) with intelligent age filtering
-- **Real-time Monitoring**: Continuously monitors specified Telegram channels for new messages using asyncio
 - **Advanced Session Management**: Intelligent Telegram session handling with automatic recovery and rate limit management
-- **Session Safety System**: Prevents session invalidation through concurrent access protection and file locking
+- **Session Safety System**: Prevents session invalidation through concurrent access protection and unified session management
 - **Resilient Error Handling**: Smart retry logic with graceful degradation for API issues and rate limiting
 - **Distributed Processing**: Uses Celery workers for parallel processing of AI analysis, notifications, and data storage
 - **Intelligent Message Filtering**: Country-specific keyword filtering with AI fallback for optimal performance and accuracy
@@ -16,7 +16,6 @@ An intelligent, high-performance Telegram message scraper that uses OpenAI to an
 - **Optimized Language Detection**: Reuses language detection from message analysis to avoid redundant API calls
 - **Teams Integration**: Sends formatted alerts to Microsoft Teams channels for significant messages
 - **SharePoint Storage**: Automatically stores all messages (significant and trivial) in SharePoint Excel files with translation info
-- **Historical Scraping**: Can scrape and analyze past messages from channels
 - **Fault Tolerance**: Automatic task retries and error recovery with Celery
 - **Scalable Architecture**: Add more workers to handle increased message volume
 - **Robust Error Handling**: Comprehensive error catching and logging throughout the system
@@ -454,7 +453,6 @@ chmod +x scripts/quick_start.sh
 | `setup.sh` | **Complete one-time setup** | **Once** during first setup | Virtual env, dependencies, config, **Telegram auth** |
 | `quick_start.sh` | **Smart restart sequence** | **After server reboot** or when starting fresh | Auto-detects auth needs, all-in-one startup |
 | `deploy_celery.sh` | **Complete Celery management** | Start/stop/restart background services | Memory-optimized workers, graceful/force stop, **post-deployment session status** |
-| `run_app.sh` | Main application runner | Interactive monitoring/testing | Connection testing, graceful startup |
 | `telegram_session.sh` | **🔐 Unified session management** | All session operations | `status`, `test`, `auth`, `renew`, `backup`, `restore`, `safety-check`, `diagnostics` |
 | `telegram_auth.py` | Session management backend | Direct Python access | `--status`, `--test`, `--renew`, `--safe-renew`, `--backup` with safety protection |
 | `monitor_resources.sh` | System resource monitoring | Check performance and memory usage | Real-time stats, alerts |
@@ -504,31 +502,35 @@ chmod +x scripts/quick_start.sh
 source telegram-ai-scraper_env/bin/activate
 ```
 
-#### 2. Start Celery Workers (in separate terminals)
+#### 2. Start Celery Workers and Beat Scheduler
 ```bash
-# Terminal 1 - Main processing workers
+# Use the automated deployment script (recommended)
+./scripts/deploy_celery.sh
+
+# Or start manually in separate terminals:
+# Terminal 1 - Beat scheduler (periodic message fetching)
+celery -A src.tasks.telegram_celery_tasks beat --loglevel=info
+
+# Terminal 2 - Main processing workers
 celery -A src.tasks.telegram_celery_tasks worker --loglevel=info --queues=telegram_processing --concurrency=4
 
-# Terminal 2 - Notification workers  
+# Terminal 3 - Notification workers  
 celery -A src.tasks.telegram_celery_tasks worker --loglevel=info --queues=notifications --concurrency=2
 
-# Terminal 3 - SharePoint workers
+# Terminal 4 - SharePoint workers
 celery -A src.tasks.telegram_celery_tasks worker --loglevel=info --queues=sharepoint --concurrency=2
 
-# Terminal 4 - Backup workers
+# Terminal 5 - Backup workers
 celery -A src.tasks.telegram_celery_tasks worker --loglevel=info --queues=backup --concurrency=1
 ```
 
-#### 3. Start Main Application
+#### 3. Test System Components
 ```bash
-# Terminal 5 - Test connections first
+# Test all connections and components
 python3 src/core/main.py --config config/config.json --mode test
 
-# Historical scraping
-python3 src/core/main.py --config config/config.json --mode historical --limit 100
-
-# Real-time monitoring
-python3 src/core/main.py --config config/config.json --mode monitor
+# Or use the comprehensive test suite
+./scripts/run_tests.sh
 ```
 
 ### Monitor System Status
@@ -550,17 +552,18 @@ python3 src/core/main.py --config config/config.json --mode monitor
 ### Command Line Options
 
 - `--config`: Configuration file path (default: config.json)
-- `--mode`: Operation mode (monitor/historical/test)
-- `--limit`: Message limit for historical scraping (default: 100)
+- `--mode`: Operation mode (test only - monitoring is now handled by Celery Beat)
+- `--run-tests`: Run the comprehensive test suite to validate all components
 
 ## How It Works
 
 ### Architecture Overview
-The system uses a **hybrid asyncio + Celery architecture** for optimal performance:
+The system uses a **session-safe Celery-based architecture** for reliable operation:
 
-- **Asyncio**: Handles real-time Telegram message listening (fast I/O operations)
-- **Celery**: Processes heavy tasks (AI analysis, API calls) in distributed workers
+- **Celery Beat**: Handles all Telegram message fetching on a periodic schedule (prevents session conflicts)
+- **Celery Workers**: Process all heavy tasks (AI analysis, API calls) in distributed workers
 - **Redis**: Message broker for task queues and result storage
+- **main.py**: Component initialization and testing only (no direct Telegram operations)
 
 ### Recent Technical Improvements
 
@@ -591,11 +594,11 @@ The system uses a **hybrid asyncio + Celery architecture** for optimal performan
    - **Country Routing**: Messages routed to country-specific Teams/SharePoint configurations
    - **Backup**: Country-specific CSV storage (separate files for significant/trivial) with full metadata
 7. **Error Handling**: Failed tasks automatically retry with exponential backoff
-8. **Monitoring**: All activities logged with classification methods (keyword_significant, keyword_trivial, excluded, ai_significant, ai_trivial) and task IDs### Queue Architecture
+8. **Monitoring**: All activities logged with classification methods (keyword_significant, keyword_trivial, excluded, ai_significant, ai_trivial) and task IDs### Session-Safe Queue Architecture
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│  Telegram API   │───▶│   Main Process   │───▶│  Redis Queues   │
-│   (Real-time)   │    │    (Asyncio)     │    │                 │
+│  Telegram API   │───▶│  Celery Beat     │───▶│  Redis Queues   │
+│   (Periodic)    │    │  (Scheduler)     │    │                 │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
                                                          │
                         ┌────────────────────────────────┼────────────────────────────────┐
@@ -606,6 +609,12 @@ The system uses a **hybrid asyncio + Celery architecture** for optimal performan
                │ • AI Analysis   │              │ • Teams Alerts  │              │ • SharePoint    │
                │ • Classification│              │ • Error Alerts  │              │ • CSV Backup    │
                └─────────────────┘              └─────────────────┘              └─────────────────┘
+
+┌──────────────────┐
+│   main.py        │ ← Component initialization and testing only
+│ (No Telegram     │   (Session-safe: no concurrent access)
+│  operations)     │
+└──────────────────┘
 ```
 
 ## File Structure
@@ -617,7 +626,7 @@ telegram-ai-scraper/
 ├── README.md                      # This file
 ├── src/                           # Source code
 │   ├── core/                      # Core application modules
-│   │   ├── main.py               # Main orchestration script (asyncio)
+│   │   ├── main.py               # Component initialization and testing (session-safe)
 │   │   ├── log_handling.py       # Logging utilities
 │   │   ├── file_handling.py      # File operations
 │   │   └── message_processor.py  # Language detection and keyword matching (non-AI)
@@ -638,7 +647,6 @@ telegram-ai-scraper/
 │   ├── quick_start.sh           # Complete restart sequence (after reboot)
 │   ├── telegram_session_check.py # Advanced session status checker and recovery assistant
 │   ├── deploy_celery.sh         # Celery worker management
-│   ├── run_app.sh               # Main application runner
 │   ├── monitor_resources.sh     # System resource monitoring
 │   ├── telegram_session.sh      # 🔐 **Unified session management wrapper** (RECOMMENDED)
 │   ├── telegram_auth.py         # Session management backend
@@ -981,8 +989,8 @@ python3 tests/validate_telegram_config.py
 # Choose option 3 to update credentials interactively
 # Get new credentials from https://my.telegram.org/apps
 
-# Alternative: Test connections to trigger authentication
-./scripts/run_app.sh test
+# Alternative: Test connections and components
+./scripts/run_tests.sh --quick
 ```
 
 #### 5. OpenAI API Errors

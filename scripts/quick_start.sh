@@ -192,8 +192,7 @@ echo "• Restart services: ./scripts/deploy_celery.sh restart"
 echo "• Stop services: ./scripts/deploy_celery.sh stop"
 echo "• Run comprehensive tests: ./scripts/run_tests.sh"
 echo "• Run quick tests: ./scripts/run_tests.sh --quick"
-echo "• Test API connections only: ./scripts/run_app.sh test-api"
-echo "• Optional real-time monitoring: ./scripts/run_app.sh monitor"
+echo "• Test Telegram session: ./scripts/telegram_session.sh test"
 echo ""
 echo "📁 Important Directories:"
 echo "• Configuration: config/config.json"
@@ -219,7 +218,7 @@ echo ""
 #         print_status "Starting real-time monitoring..."
 #         echo "Press Ctrl+C to stop monitoring"
 #         echo ""
-#         ./scripts/run_app.sh monitor
+#         # Monitoring now handled by Celery Beat automatically
 #     fi
 # fi
 

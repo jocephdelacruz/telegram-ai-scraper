@@ -1,6 +1,8 @@
-# How to Run Telegram AI Scraper in Monitoring Mode
+# How to Run Telegram AI Scraper with Session-Safe Architecture
 
 ## Complete Step-by-Step Guide
+
+**🔄 Architecture Change Notice**: The system now uses a session-safe Celery Beat architecture where all Telegram operations are handled by the background scheduler. This prevents session conflicts and phone disconnections.
 
 ### Prerequisites Check
 1. **System Requirements**:
@@ -93,8 +95,9 @@ chmod +x scripts/quick_start.sh
    - Notification workers
    - SharePoint workers  
    - Backup workers
-5. ✅ Starts Flower monitoring web UI at http://localhost:5555
-6. ✅ Provides system status and next steps
+5. ✅ **Starts Celery Beat scheduler** (handles all periodic message fetching)
+6. ✅ Starts Flower monitoring web UI at http://localhost:5555
+7. ✅ Provides system status and next steps
 
 **Expected Flow**:
 - **First run after setup**: Should start immediately (auth already done)
@@ -105,7 +108,7 @@ chmod +x scripts/quick_start.sh
 
 ```bash
 # Test all connections and components
-./scripts/run_app.sh test
+./scripts/run_tests.sh --quick
 ```
 
 This will test:
@@ -143,12 +146,22 @@ The SharePoint tests now include:
 - **SharePoint tests** create and use dedicated test sheets (`TEST_Significant`, `TEST_Trivial`) and automatically clean up all test data. Your production data in the `Significant` and `Trivial` sheets will never be modified or deleted.
 - **CSV tests** create and use dedicated test CSV files (`TEST_iraq_significant_messages.csv`, `TEST_iraq_trivial_messages.csv`) and automatically delete them after testing. Your production CSV files (`iraq_significant_messages.csv`, `iraq_trivial_messages.csv`) remain untouched.
 
-### Step 3: Start Monitoring
+### Step 3: System is Now Running (Automated)
+
+With the new architecture, **no manual monitoring command is needed**. The system automatically runs in the background via Celery Beat:
 
 ```bash
-# Start real-time monitoring
-./scripts/run_app.sh monitor
+# Check system status to verify everything is running
+./scripts/status.sh
+
+# View monitoring interface (if needed)
+# Open browser to: http://localhost:5555 (Flower UI)
 ```
+
+**What's Running Automatically:**
+- 🔄 **Celery Beat**: Fetches messages every 3 minutes from all channels
+- 👥 **Worker Pool**: Processes messages, sends Teams alerts, stores in SharePoint
+- 🌸 **Flower UI**: Monitor tasks and workers at http://localhost:5555
 
 ### Step 3.5: Admin Teams Monitoring Setup
 
@@ -180,20 +193,30 @@ python3 scripts/run_tests.py --admin-teams
 
 ### Step 4: Monitor the System
 
-Once monitoring starts, you'll see:
+The system now runs automatically in the background. Check status with:
+
+```bash
+./scripts/status.sh
+```
+
+You'll see output like:
 ```
 ==========================================
-Starting Telegram AI Scraper Monitoring  
+Telegram AI Scraper - System Status
 ==========================================
 
-[2025-10-02 10:30:15] Initializing Telegram AI Scraper...
-[2025-10-02 10:30:16] Telegram client initialized
-[2025-10-02 10:30:17] OpenAI processor initialized  
-[2025-10-02 10:30:18] Teams notifier initialized
-[2025-10-02 10:30:19] SharePoint processor initialized
-[2025-10-02 10:30:20] Starting real-time monitoring...
-[2025-10-02 10:30:21] Monitoring channels: @philippinesnews, @rapplerdotcom, @abscbnnews
-[2025-10-02 10:30:22] Listening for new messages... (Press Ctrl+C to stop)
+✅ Redis: Running (PID: 1234)
+✅ Celery Beat: Running (PID: 5678) - Periodic message fetching
+✅ Processing Workers: 4 active
+✅ Notification Workers: 2 active  
+✅ SharePoint Workers: 2 active
+✅ Backup Workers: 1 active
+✅ Flower UI: http://localhost:5555
+
+📊 System Health: GOOD
+🔄 Last Message Fetch: 2 minutes ago
+📨 Messages Processed Today: 127
+⚡ Session Status: Active (Age: 5 days)
 ```
 
 ## Quick Reference
@@ -210,11 +233,11 @@ Starting Telegram AI Scraper Monitoring
 # Check system status
 ./scripts/status.sh
 
-# Start monitoring
-./scripts/run_app.sh monitor
+# Test connections and components
+./scripts/run_tests.sh --quick
 
-# Test connections
-./scripts/run_app.sh test
+# Or run comprehensive test suite
+./scripts/run_tests.sh
 
 # Monitor resources
 ./scripts/monitor_resources.sh
@@ -254,35 +277,37 @@ tail -f logs/celery_main_processor.log
 
 If you prefer manual control over each component:
 
-#### A. Start Workers Individually
+#### A. Start Workers and Beat Scheduler Individually
 ```bash
 # Activate environment first
 source telegram-ai-scraper_env/bin/activate
 
-# Terminal 1 - Main processing
+# Terminal 1 - Beat scheduler (REQUIRED for message fetching)
+celery -A src.tasks.telegram_celery_tasks beat --loglevel=info
+
+# Terminal 2 - Main processing
 celery -A src.tasks.telegram_celery_tasks worker --loglevel=info --queues=telegram_processing --concurrency=4 --hostname=main@%h
 
-# Terminal 2 - Notifications  
+# Terminal 3 - Notifications  
 celery -A src.tasks.telegram_celery_tasks worker --loglevel=info --queues=notifications --concurrency=2 --hostname=notifications@%h
 
-# Terminal 3 - SharePoint
+# Terminal 4 - SharePoint
 celery -A src.tasks.telegram_celery_tasks worker --loglevel=info --queues=sharepoint --concurrency=2 --hostname=sharepoint@%h
 
-# Terminal 4 - Backup
+# Terminal 5 - Backup
 celery -A src.tasks.telegram_celery_tasks worker --loglevel=info --queues=backup --concurrency=1 --hostname=backup@%h
-
-# Terminal 5 - Beat scheduler
-celery -A src.tasks.telegram_celery_tasks beat --loglevel=info
 ```
 
-#### B. Start Main Application
+#### B. Test System Components (Optional)
 ```bash
-# Terminal 6 - Test connections first
+# Terminal 6 - Test connections and components
 python3 src/core/main.py --config config/config.json --mode test
 
-# If tests pass, start monitoring
-python3 src/core/main.py --config config/config.json --mode monitor
+# Or run comprehensive test suite
+./scripts/run_tests.sh
 ```
+
+**Important**: With the new architecture, **main.py no longer handles monitoring**. All message fetching is done by Celery Beat scheduler automatically.
 
 ### Step 5: Monitoring and Management
 
@@ -396,21 +421,23 @@ python3 -c "import json; json.load(open('config/config.json'))"
 
 When running correctly, you should see:
 
-1. **System Startup**: All workers initialize and connect
-2. **Channel Monitoring**: System listens to configured Telegram channels
-3. **Message Processing**: New messages trigger Celery tasks
+1. **System Startup**: All workers and Beat scheduler initialize
+2. **Periodic Fetching**: Beat scheduler fetches messages every 3 minutes automatically
+3. **Message Processing**: New messages trigger distributed Celery tasks
 4. **AI Analysis**: Messages analyzed for significance using country-specific filters
 5. **Notifications**: Significant messages sent to Teams
 6. **Storage**: All messages stored in SharePoint (Significant/Trivial sheets) and CSV backups
-7. **Logging**: Detailed logs show processing activity
+7. **Session Safety**: No session conflicts - only Beat scheduler accesses Telegram
+8. **Logging**: Detailed logs show processing activity
 
 ### Key Log Files to Monitor
 
-- `logs/main.log` - Main application events
+- `logs/main.log` - Main application events (testing and initialization only)
+- `logs/celery_beat.log` - Periodic message fetching by Beat scheduler
 - `logs/celery_main_processor.log` - Message processing tasks
 - `logs/celery_notifications.log` - Teams notifications
 - `logs/celery_sharepoint.log` - SharePoint operations
 - `logs/telegram.log` - Telegram API interactions
 - `logs/openai.log` - AI analysis results
 
-The system is designed to run continuously, processing messages in real-time with automatic error recovery and task retries.
+The system is designed to run continuously with **session-safe periodic fetching**, processing messages automatically with error recovery and task retries.

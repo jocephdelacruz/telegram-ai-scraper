@@ -25,9 +25,8 @@ from src.integrations.openai_utils import OpenAIProcessor
 from src.integrations.teams_utils import TeamsNotifier
 from src.integrations.sharepoint_utils import SharepointProcessor
 
-# Import Celery tasks
-from src.tasks.telegram_celery_tasks import process_telegram_message, health_check
-from celery.result import AsyncResult
+# Import Celery tasks (only for health check)
+from src.tasks.telegram_celery_tasks import health_check
 
 # Logging setup
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -48,17 +47,7 @@ class TelegramAIScraper:
         self.openai_processor = None
         self.teams_notifier = None
         self.sharepoint_processor = None
-        self.running = False
-        self.active_tasks = {}  # Track active Celery tasks
-        self.stats = {
-            'total_messages': 0,
-            'significant_messages': 0,
-            'errors': 0,
-            'start_time': None,
-            'tasks_queued': 0,
-            'tasks_completed': 0,
-            'tasks_failed': 0
-        }
+        # Removed: active_tasks, stats tracking - handled by Celery Beat independently
         
         try:
             # Determine project root directory
@@ -137,9 +126,8 @@ class TelegramAIScraper:
             )
             print("Telegram scraper object created")
             
-            # Set message handler
-            self.telegram_scraper.set_message_handler(self.handle_new_message)
-            print("Message handler set")
+            # Message handler not set - Celery Beat handles all message processing
+            print("Telegram scraper ready (Celery Beat will handle message processing)")
             
             # Get all channels from all countries
             all_channels = []
@@ -154,57 +142,22 @@ class TelegramAIScraper:
             
             LOGGER.writeLog(f"Total channels to monitor: {len(all_channels)}")
             
-            print("Starting Telegram client...")
-            # Start Telegram client with enhanced error handling
-            try:
-                success = await self.telegram_scraper.start_client()
-                if success:
-                    print("✅ Telegram client started successfully")
-                    LOGGER.writeLog("Telegram scraper initialized")
-                else:
-                    print("❌ Failed to start Telegram client")
-                    print("🔧 This usually means authentication is needed")
-                    print("🚀 Run: python3 scripts/telegram_auth.py")
-                    LOGGER.writeLog("Failed to start Telegram client - authentication likely needed")
-                    
-                    # In test mode, we can continue without Telegram to test other components
-                    if hasattr(self, '_test_mode') and self._test_mode:
-                        print("⚠️  Continuing in test mode without Telegram")
-                        self.telegram_scraper = None
-                    else:
-                        # In monitor/historical mode, Telegram is required
-                        raise Exception("Telegram client authentication required. Run: python3 scripts/telegram_auth.py")
-                        
-            except TelegramRateLimitError as e:
-                print(f"🚫 TELEGRAM RATE LIMITED: {e}")
-                print("⏸️  System must wait for rate limit to expire")
-                print("📊 Use 'python3 tests/check_telegram_status.py' to monitor")
-                LOGGER.writeLog(f"Telegram rate limited: {e}")
-                raise Exception("Telegram API rate limited - system cannot start")
-                
-            except TelegramSessionError as e:
-                print(f"🔐 TELEGRAM SESSION ERROR: {e}")
-                print("🔑 Run 'python3 scripts/telegram_auth.py' to re-authenticate")
-                LOGGER.writeLog(f"Telegram session error: {e}")
-                
-                # In test mode, continue without Telegram
-                if hasattr(self, '_test_mode') and self._test_mode:
-                    print("⚠️  Continuing in test mode without Telegram")
-                    self.telegram_scraper = None
-                else:
-                    raise Exception("Telegram session authentication required. Run: python3 scripts/telegram_auth.py")
-                    
-            except TelegramAuthError as e:
-                print(f"🚨 TELEGRAM AUTH ERROR: {e}")
-                print("🔧 Check your API credentials in config.json")
-                LOGGER.writeLog(f"Telegram auth error: {e}")
-                
-                # In test mode, continue without Telegram
-                if hasattr(self, '_test_mode') and self._test_mode:
-                    print("⚠️  Continuing in test mode without Telegram")
-                    self.telegram_scraper = None
-                else:
-                    raise Exception("Telegram authentication failed - check API credentials")
+            print("🔐 SESSION SAFETY: Telegram client will NOT be started by main.py")
+            print("   ✅ Session conflicts prevented - Celery Beat handles all Telegram operations")
+            print("   � Your phone will stay connected to Telegram")
+            
+            # SESSION SAFETY: Do NOT start Telegram client in main.py
+            # This prevents session conflicts with Celery Beat workers
+            self._telegram_session_started = False  # Track that main.py did NOT start the session
+            
+            # Create Telegram scraper object but don't start client (session-safe)
+            print("   📦 Telegram scraper object created (client not started)")
+            LOGGER.writeLog("Telegram scraper object created - client not started for session safety")
+            
+            # In session-safe architecture, only Celery Beat should access Telegram
+            print("   🔄 Celery Beat scheduler will handle all Telegram message fetching")
+            print("   ⚠️  If you need to test Telegram connection, use: ./scripts/telegram_session.sh test")
+            LOGGER.writeLog("Session-safe mode: Telegram client not started to prevent conflicts")
 
             print("Initializing Teams notifier...")
             # Initialize Teams notifier - check both old and new config locations
@@ -295,240 +248,13 @@ class TelegramAIScraper:
             return False
 
 
-    async def handle_new_message(self, message_data):
-        """
-        Handle a new message from Telegram - WITH CELERY INTEGRATION
-        Fast ingestion, heavy processing delegated to workers
-        
-        Args:
-            message_data: Dictionary containing message information
-        """
-        try:
-            self.stats['total_messages'] += 1
-            channel_name = message_data.get('Channel', 'unknown')
-            LOGGER.writeLog(f"Received message {message_data.get('Message_ID', 'unknown')} from {channel_name}")
-
-            # Skip empty messages - check multiple possible text fields
-            message_text = (
-                message_data.get('Message_Text', '') or 
-                message_data.get('text', '') or 
-                message_data.get('Original_Text', '')
-            )
-            if not message_text or not message_text.strip():
-                LOGGER.writeLog(f"Skipping message {message_data.get('Message_ID', 'unknown')} with no meaningful text content")
-                return
-
-            # Determine country for this message
-            country_code, country_info = self.determine_message_country(channel_name)
-            if not country_code:
-                LOGGER.writeLog(f"Warning: Channel {channel_name} not found in any country configuration")
-                country_code = "unknown"
-                country_info = {"name": "Unknown"}
-
-            # Add processing metadata
-            message_data['received_at'] = datetime.now().isoformat()
-            message_data['text'] = message_data.get('Message_Text', '')  # Standardize field name for Celery tasks
-            message_data['id'] = message_data.get('Message_ID', '')
-            message_data['channel'] = channel_name
-            message_data['country_code'] = country_code
-            message_data['country_name'] = country_info.get('name', country_code)
-            message_data['Country'] = country_info.get('name', country_code)  # For Excel field compatibility
-
-            # FAST: Queue the message for processing (non-blocking)
-            task = process_telegram_message.delay(message_data, self.config)
-            
-            self.stats['tasks_queued'] += 1
-            LOGGER.writeLog(f"Queued message {message_data.get('Message_ID', 'unknown')} for processing (Task ID: {task.id})")
-            
-            # Track task for monitoring
-            self.active_tasks[task.id] = {
-                'message_id': message_data.get('Message_ID'),
-                'channel': message_data.get('Channel'),
-                'queued_at': datetime.now(),
-                'status': 'queued'
-            }
-            
-            # Optionally clean up old completed tasks
-            await self.cleanup_completed_tasks()
-            
-        except Exception as e:
-            self.stats['errors'] += 1
-            LOGGER.writeLog(f"Error queuing message {message_data.get('Message_ID', 'unknown')}: {e}")
-            
-            # Send error alert to Teams
-            if self.teams_notifier:
-                self.teams_notifier.send_system_alert(
-                    "ERROR",
-                    f"Error queuing message from {message_data.get('Channel', 'Unknown')}: {e}",
-                    {"Message_ID": message_data.get('Message_ID', 'Unknown')}
-                )
-            
-            # Send critical exception to admin if it's a serious error
-            if self.stats['errors'] % 10 == 0:  # Every 10th error to avoid spam
-                try:
-                    from src.integrations.teams_utils import send_critical_exception
-                    send_critical_exception(
-                        "MessageHandlingError",
-                        str(e),
-                        "TelegramAIScraper.handle_new_message",
-                        additional_context={
-                            "message_id": message_data.get('Message_ID', 'unknown'),
-                            "channel": message_data.get('Channel', 'unknown'),
-                            "total_errors": self.stats['errors']
-                        }
-                    )
-                except Exception as admin_error:
-                    LOGGER.writeLog(f"Failed to send message handling error to admin: {admin_error}")
-
-
-    async def cleanup_completed_tasks(self):
-        """Clean up completed tasks from active_tasks tracking"""
-        try:
-            if len(self.active_tasks) < 100:  # Only cleanup when we have many tasks
-                return
-                
-            completed_tasks = []
-            for task_id, task_info in self.active_tasks.items():
-                try:
-                    result = AsyncResult(task_id)
-                    if result.ready():
-                        completed_tasks.append(task_id)
-                        if result.successful():
-                            self.stats['tasks_completed'] += 1
-                        else:
-                            self.stats['tasks_failed'] += 1
-                            LOGGER.writeLog(f"Task {task_id} failed: {result.result}")
-                except Exception as e:
-                    LOGGER.writeLog(f"Error checking task {task_id}: {e}")
-                    completed_tasks.append(task_id)  # Remove problematic tasks
-            
-            # Remove completed tasks
-            for task_id in completed_tasks:
-                self.active_tasks.pop(task_id, None)
-                
-            if completed_tasks:
-                LOGGER.writeLog(f"Cleaned up {len(completed_tasks)} completed tasks")
-                
-        except Exception as e:
-            LOGGER.writeLog(f"Error during task cleanup: {e}")
-
-
-    async def get_task_stats(self):
-        """Get current task statistics"""
-        try:
-            active_count = len(self.active_tasks)
-            
-            # Count tasks by status
-            pending_count = 0
-            running_count = 0
-            
-            for task_id in list(self.active_tasks.keys())[:10]:  # Check only first 10 to avoid performance issues
-                try:
-                    result = AsyncResult(task_id)
-                    if result.state == 'PENDING':
-                        pending_count += 1
-                    elif result.state == 'STARTED':
-                        running_count += 1
-                except:
-                    pass
-            
-            return {
-                'active_tasks': active_count,
-                'pending_tasks': pending_count,
-                'running_tasks': running_count,
-                'tasks_queued': self.stats['tasks_queued'],
-                'tasks_completed': self.stats['tasks_completed'],
-                'tasks_failed': self.stats['tasks_failed']
-            }
-        except Exception as e:
-            LOGGER.writeLog(f"Error getting task stats: {e}")
-            return {}
-
-
-    async def scrape_historical_messages(self, limit_per_channel=100):
-        """Scrape historical messages from configured channels"""
-        try:
-            if not self.telegram_scraper:
-                LOGGER.writeLog("Telegram scraper not initialized")
-                return False
-
-            channels = self.config.get('TELEGRAM_CONFIG', {}).get('CHANNELS_TO_MONITOR', [])
-            if not channels:
-                LOGGER.writeLog("No channels configured for monitoring")
-                return False
-
-            LOGGER.writeLog(f"Starting historical scraping of {len(channels)} channels")
-
-            for channel in channels:
-                try:
-                    LOGGER.writeLog(f"Scraping historical messages from {channel}")
-                    messages = await self.telegram_scraper.get_channel_messages(channel, limit_per_channel)
-                    
-                    LOGGER.writeLog(f"Retrieved {len(messages)} messages from {channel}")
-                    
-                    # Process each message (will be queued to Celery)
-                    for message_data in messages:
-                        await self.handle_new_message(message_data)
-                        
-                        # Add small delay to avoid overwhelming Celery queue
-                        await asyncio.sleep(0.05)  # Reduced delay since we're just queuing
-                    
-                except Exception as e:
-                    LOGGER.writeLog(f"Error scraping channel {channel}: {e}")
-                    continue
-
-            LOGGER.writeLog("Historical scraping completed")
-            return True
-
-        except Exception as e:
-            LOGGER.writeLog(f"Error in historical scraping: {e}")
-            return False
-
-
-    async def start_monitoring(self):
-        """Start real-time monitoring of Telegram channels"""
-        try:
-            if not self.telegram_scraper:
-                LOGGER.writeLog("Telegram scraper not initialized")
-                return False
-
-            channels = self.config.get('TELEGRAM_CONFIG', {}).get('CHANNELS_TO_MONITOR', [])
-            if not channels:
-                LOGGER.writeLog("No channels configured for monitoring")
-                return False
-
-            self.running = True
-            self.stats['start_time'] = datetime.now()
-            
-            # Send startup notification
-            if self.teams_notifier:
-                self.teams_notifier.send_system_alert(
-                    "INFO",
-                    f"Telegram AI Scraper started monitoring {len(channels)} channels",
-                    {"Channels": ", ".join(channels)}
-                )
-
-            LOGGER.writeLog(f"Starting real-time monitoring of {len(channels)} channels")
-            
-            # Start monitoring (this will run indefinitely)
-            await self.telegram_scraper.start_monitoring(channels)
-
-        except Exception as e:
-            LOGGER.writeLog(f"Error in monitoring: {e}")
-            
-            # Send critical exception to admin
-            try:
-                from src.integrations.teams_utils import send_critical_exception
-                send_critical_exception(
-                    "MonitoringError",
-                    str(e),
-                    "TelegramAIScraper.start_monitoring",
-                    additional_context={"channels_count": len(channels) if 'channels' in locals() else 0}
-                )
-            except Exception as admin_error:
-                LOGGER.writeLog(f"Failed to send monitoring error to admin: {admin_error}")
-            
-            return False
+    # REMOVED: handle_new_message, cleanup_completed_tasks, get_task_stats, 
+    # scrape_historical_messages, start_monitoring
+    # These functions are no longer needed as:
+    # - Real-time monitoring is disabled for session safety
+    # - Historical scraping is replaced by Celery Beat continuous fetching
+    # - Celery Beat handles all message processing independently
+    # This simplifies main.py to focus only on initialization and testing
 
 
     async def stop(self):
@@ -536,24 +262,6 @@ class TelegramAIScraper:
         try:
             LOGGER.writeLog("Stopping Telegram AI Scraper...")
             self.running = False
-
-            # Send shutdown notification
-            if self.teams_notifier:
-                runtime = datetime.now() - self.stats['start_time'] if self.stats['start_time'] else timedelta(0)
-                task_stats = await self.get_task_stats()
-                self.teams_notifier.send_system_alert(
-                    "INFO",
-                    "Telegram AI Scraper shutting down",
-                    {
-                        "Total Messages Received": self.stats['total_messages'],
-                        "Tasks Queued": self.stats['tasks_queued'],
-                        "Tasks Completed": self.stats['tasks_completed'],
-                        "Tasks Failed": self.stats['tasks_failed'],
-                        "Active Tasks": task_stats.get('active_tasks', 0),
-                        "Errors": self.stats['errors'],
-                        "Runtime": str(runtime)
-                    }
-                )
             
             # Send admin shutdown notification
             try:
@@ -573,9 +281,12 @@ class TelegramAIScraper:
             if self.sharepoint_processor:
                 self.sharepoint_processor.closeExcelSession()
 
-            # Stop Telegram client
+            # SESSION SAFETY: main.py never starts Telegram client, so never stops it
+            # Celery Beat workers manage all Telegram operations independently
             if self.telegram_scraper:
-                await self.telegram_scraper.stop_client()
+                LOGGER.writeLog("🔐 SESSION SAFETY: Telegram session NOT managed by main.py")
+                LOGGER.writeLog("   Celery Beat workers handle all Telegram operations independently")
+                LOGGER.writeLog("   No session interference - phone stays connected to Telegram")
 
             LOGGER.writeLog("Telegram AI Scraper stopped successfully")
 
@@ -594,9 +305,7 @@ class TelegramAIScraper:
                 LOGGER.writeLog(f"Failed to send shutdown error to admin: {admin_error}")
 
 
-    def get_stats(self):
-        """Get current statistics"""
-        return self.stats.copy()
+    # REMOVED: get_stats() - statistics are handled by Celery Beat monitoring
 
 
 
@@ -605,8 +314,7 @@ async def main():
     parser = argparse.ArgumentParser(description='Telegram AI Scraper')
     parser.add_argument('--config', default='config.json', help='Configuration file path')
     parser.add_argument('--mode', choices=['monitor', 'historical', 'test', 'test-full'], default='monitor',
-                       help='Operation mode: monitor (real-time), historical (scrape past messages), test (API connections only), test-full (comprehensive tests)')
-    parser.add_argument('--limit', type=int, default=100, help='Limit for historical scraping per channel')
+                       help='Operation mode: monitor (Celery Beat only), historical (deprecated), test (essential tests), test-full (comprehensive tests)')
     
     args = parser.parse_args()
 
@@ -641,130 +349,128 @@ async def main():
 
         # Execute based on mode
         if args.mode == 'test-full':
-            print("Running comprehensive system tests...")
-            LOGGER.writeLog("Running comprehensive system tests...")
+            print("🧪 RUNNING COMPREHENSIVE TEST SUITE (Session Safe)")
+            print("")
+            print("   Using consolidated test runner: scripts/run_tests.py")
+            print("   This includes all tests with proper session safety")
+            print("")
+            LOGGER.writeLog("Running comprehensive test suite via consolidated test runner")
             
-            # Run the comprehensive test suite
+            # Run the full maintained, session-safe test suite
             import subprocess
             result = subprocess.run([
                 sys.executable, 'scripts/run_tests.py'
-            ], cwd=scraper.config_path.parent)
+            ], cwd=PROJECT_ROOT)
+            
+            if result.returncode == 0:
+                print("")
+                print("🎉 ALL COMPREHENSIVE TESTS PASSED!")
+                print("   System is fully validated and ready for production")
+                LOGGER.writeLog("Comprehensive test suite completed successfully")
+            else:
+                print("")
+                print("⚠️  Some comprehensive tests failed")
+                print("   Review the detailed output above for troubleshooting")
+                LOGGER.writeLog("Some comprehensive tests failed")
             
             sys.exit(result.returncode)
             
         elif args.mode == 'test':
-            print("Running API connection tests...")
-            LOGGER.writeLog("Testing API connections...")
+            print("🧪 RUNNING ESSENTIAL TESTS (Session Safe)")
+            print("")
+            print("   Using consolidated test runner: scripts/run_tests.py --quick")
+            print("   This prevents session conflicts and uses maintained test suite")
+            print("")
+            LOGGER.writeLog("Running essential tests via consolidated test runner")
             
-            # Session safety check for Telegram tests
-            safety = SessionSafetyManager()
-            try:
-                safety.check_session_safety("main_test_mode")
-                print("✅ Session safety check passed for test mode")
-                safety.record_session_access("main_test_mode")
-            except SessionSafetyError as e:
-                print("🚫 SESSION SAFETY WARNING for test mode:")
-                print(str(e))
-                print("⚠️  Skipping Telegram tests to prevent session invalidation")
-                scraper.telegram_scraper = None  # Disable Telegram tests
+            # Run the maintained, session-safe test suite  
+            import subprocess
+            result = subprocess.run([
+                sys.executable, 'scripts/run_tests.py', '--quick'
+            ], cwd=PROJECT_ROOT)
             
-            # Test Teams connection
-            if scraper.teams_notifier:
-                print("Testing Teams connection...")
-                teams_test = scraper.teams_notifier.test_connection()
-                print(f"Teams connection test: {'SUCCESS' if teams_test else 'FAILED'}")
-                LOGGER.writeLog(f"Teams connection test: {'SUCCESS' if teams_test else 'FAILED'}")
+            if result.returncode == 0:
+                print("")
+                print("✅ Essential tests completed successfully!")
+                print("   For full test suite, run: ./scripts/run_tests.sh")
+                LOGGER.writeLog("Essential tests completed successfully")
             else:
-                print("Teams notifier not configured, skipping test")
+                print("")
+                print("⚠️  Some tests failed. Check output above for details.")
+                print("   For detailed testing, run: ./scripts/run_tests.sh")
+                LOGGER.writeLog("Some essential tests failed")
             
-            # Test Admin Teams connection
-            try:
-                from src.integrations.teams_utils import get_admin_notifier
-                admin_notifier = get_admin_notifier()
-                if admin_notifier:
-                    print("Testing Admin Teams connection...")
-                    admin_test = admin_notifier.test_admin_connection()
-                    print(f"Admin Teams connection test: {'SUCCESS' if admin_test else 'FAILED'}")
-                    LOGGER.writeLog(f"Admin Teams connection test: {'SUCCESS' if admin_test else 'FAILED'}")
-                else:
-                    print("Admin Teams notifier not configured, skipping test")
-            except Exception as e:
-                print(f"Error testing admin Teams connection: {e}")
-                LOGGER.writeLog(f"Error testing admin Teams connection: {e}")
-            
-            # Test Telegram connection
-            print("Testing Telegram connection...")
-            if scraper.telegram_scraper:
-                # Get channels from all countries
-                all_channels = []
-                countries = scraper.config.get('COUNTRIES', {})
-                for country_code, country_info in countries.items():
-                    channels = country_info.get('channels', [])
-                    all_channels.extend(channels[:1])  # Take first channel from each country
-                    
-                if all_channels:
-                    for channel in all_channels[:1]:  # Test first channel only
-                        print(f"Testing channel: {channel}")
-                        info = await scraper.telegram_scraper.get_channel_info(channel)
-                        if info:
-                            print(f"Telegram connection test for {channel}: SUCCESS")
-                            print(f"Channel info: {info['title']} ({info['participants_count']} members)")
-                            LOGGER.writeLog(f"Telegram connection test for {channel}: SUCCESS")
-                            LOGGER.writeLog(f"Channel info: {info['title']} ({info['participants_count']} members)")
-                        else:
-                            print(f"Telegram connection test for {channel}: FAILED")
-                            LOGGER.writeLog(f"Telegram connection test for {channel}: FAILED")
-                else:
-                    print("No channels configured for testing")
-            else:
-                print("Telegram client not initialized - skipping Telegram tests")
-            
-            print("Connection tests completed")
-            LOGGER.writeLog("Connection tests completed")
-            
-            # Clean up session safety record
-            try:
-                safety.cleanup_session_access()
-            except:
-                pass
+            sys.exit(result.returncode)
             
         elif args.mode == 'historical':
-            # Session safety check for historical mode
-            safety = SessionSafetyManager()
-            try:
-                safety.check_session_safety("main_historical_mode")
-                print("✅ Session safety check passed for historical mode")
-                safety.record_session_access("main_historical_mode")
-                
-                LOGGER.writeLog(f"Starting historical scraping (limit: {args.limit} per channel)...")
-                await scraper.scrape_historical_messages(args.limit)
-                
-                # Clean up session safety record
-                safety.cleanup_session_access()
-            except SessionSafetyError as e:
-                print("�️ SESSION SAFETY PROTECTION for historical mode:")
-                print(str(e))
-                print("✅ Session conflict prevented - your phone stays connected!")
-                LOGGER.writeLog("Historical mode prevented due to session safety (workers running)")
+            print("📚 HISTORICAL MODE - DEPRECATED")
+            print("")
+            print("⚠️  Historical mode has been removed for system simplification:")
+            print("   • Celery Beat already fetches messages every 4 minutes")
+            print("   • Periodic fetching covers historical needs automatically")
+            print("   • Reduces session conflict risks and code complexity")
+            print("")
+            print("🎯 ALTERNATIVES:")
+            print("   • Let Celery Beat run - it fetches recent messages continuously")
+            print("   • Check data/ folder for existing historical data")
+            print("   • Use SharePoint for comprehensive message archives")
+            print("")
+            LOGGER.writeLog("Historical mode deprecated - redirecting to Celery Beat approach")
+            sys.exit(0)
             
         else:  # monitor mode
-            # Session safety check for monitor mode
-            safety = SessionSafetyManager()
+            print("🚀 MONITOR MODE - Celery Beat Only (Session Safe)")
+            print("")
+            print("📋 ARCHITECTURE INFO:")
+            print("   ✅ Celery Beat: Handles all message fetching (every 4 minutes)")
+            print("   ❌ Real-time: Disabled to prevent Telegram session conflicts")
+            print("   📱 Phone Safety: No risk of Telegram logout due to session conflicts")
+            print("")
+            
+            # Check if Celery workers are running
             try:
-                safety.check_session_safety("main_monitor_mode")
-                print("✅ Session safety check passed for monitor mode")
-                safety.record_session_access("main_monitor_mode")
+                from src.tasks.telegram_celery_tasks import health_check
+                health_result = health_check.delay()
+                health_status = health_result.get(timeout=10)
                 
-                LOGGER.writeLog("Starting real-time monitoring...")
-                await scraper.start_monitoring()
-                
-                # Clean up session safety record
-                safety.cleanup_session_access()
-            except SessionSafetyError as e:
-                print("�️ SESSION SAFETY PROTECTION for monitor mode:")
-                print(str(e))
-                print("✅ Session conflict prevented - your phone stays connected!")
-                LOGGER.writeLog("Monitor mode prevented due to session safety (workers running)")
+                if health_status and health_status.get('status') == 'healthy':
+                    print("✅ Celery workers are healthy and running")
+                    print(f"   Worker ID: {health_status.get('worker_id', 'unknown')}")
+                    print("   Message fetching is active via Celery Beat periodic tasks")
+                else:
+                    print("⚠️  Celery workers may not be running optimally")
+                    print("   Run: ./scripts/deploy_celery.sh start")
+                    
+            except Exception as celery_error:
+                print("❌ Cannot verify Celery worker status")
+                print(f"   Error: {celery_error}")
+                print("   Ensure Celery workers are running: ./scripts/deploy_celery.sh start")
+            
+            print("")
+            print("🎯 MONITOR MODE STRATEGY:")
+            print("   • Initialization completed (Teams notifications sent)")
+            print("   • Celery Beat handles all periodic message fetching") 
+            print("   • No session conflicts - your phone stays connected")
+            print("   • Main process stays alive for component availability")
+            print("")
+            print("   Press Ctrl+C to exit (Celery Beat continues independently)")
+            
+            LOGGER.writeLog("Monitor mode: Celery Beat only - no real-time monitoring to prevent session conflicts")
+            
+            # Keep the process alive without Telegram session access
+            try:
+                while True:
+                    await asyncio.sleep(60)  # Sleep for 1 minute intervals
+                    # Optional: Log periodic status every hour
+                    if datetime.now().minute == 0:
+                        LOGGER.writeLog("Monitor mode active - Celery Beat handling message fetching")
+                        
+            except KeyboardInterrupt:
+                print("")
+                print("✅ Main process shutting down")
+                print("   Celery Beat continues running independently")
+                print("   Message fetching will continue via workers")
+                LOGGER.writeLog("Monitor mode main process shutdown - Celery Beat continues")
 
     except KeyboardInterrupt:
         LOGGER.writeLog("Received keyboard interrupt")
