@@ -79,6 +79,29 @@ def process_telegram_message(self, message_data, config):
         
         LOGGER.writeLog(f"Processing message {message_id} from {channel} ({country_code})")
         
+        # SINGLE EFFICIENT EMPTY MESSAGE CHECK - Skip processing if no meaningful text content
+        # Message_Text contains the original text from Telegram, so check that first
+        message_text = message_data.get('Message_Text', '') or message_data.get('text', '')
+        if not message_text or not message_text.strip():
+            LOGGER.writeLog(f"⏭️ SKIPPING empty message {message_id} - no text content from Telegram")
+            
+            # Mark message as processed in Redis to prevent reprocessing
+            try:
+                import redis
+                redis_client = redis.Redis(host='localhost', port=6379, db=1)
+                duplicate_key = f"processed_msg:{channel}:{message_id}"
+                redis_client.setex(duplicate_key, 86400, "1")  # 24 hours
+                LOGGER.writeLog(f"Empty message {message_id} marked as processed in Redis")
+            except Exception as redis_error:
+                LOGGER.writeLog(f"Warning: Could not mark empty message {message_id} in Redis: {redis_error}")
+            
+            return {
+                "status": "skipped_empty", 
+                "message_id": message_id,
+                "country": country_code,
+                "reason": "No text content from Telegram"
+            }
+        
         # Message processing with optimized language detection and keyword matching
         from src.core.message_processor import MessageProcessor
         openai_processor = OpenAIProcessor(config['OPEN_AI_KEY'])
@@ -138,7 +161,9 @@ def process_telegram_message(self, message_data, config):
             if should_translate:
                 LOGGER.writeLog(f"Message {message_id} already in English, no translation needed")
             else:
-                LOGGER.writeLog(f"Translation skipped for {message_data['AI_Category'].lower()} message {message_id}")
+                LOGGER.writeLog(f"Translation skipped for trivial message {message_id}")
+        
+
         
         # Build analysis result structure
         analysis_result = {
@@ -237,6 +262,7 @@ def send_teams_notification(self, message_data, config, country_code):
     """Send Teams notification to country-specific webhook"""
     try:
         message_id = message_data.get('id', 'unknown')
+        
         LOGGER.writeLog(f"Sending Teams notification for message {message_id} ({country_code})")
         
         # Get country-specific Teams configuration
@@ -663,6 +689,23 @@ async def fetch_messages_async(telegram_scraper, all_channels, config, cutoff_ti
                     message_data['text'] = message_data.get('Message_Text', '')
                     message_data['id'] = message_data.get('Message_ID', '')
                     message_data['channel'] = channel
+                    
+                    # Skip messages with empty text content before queuing
+                    message_text = message_data.get('text', '') or message_data.get('Message_Text', '')
+                    if not message_text or not message_text.strip():
+                        message_id = message_data.get('Message_ID', 'N/A')
+                        LOGGER.writeLog(f"⏭️  SKIPPING empty message {message_id} from {channel} - no text content")
+                        skipped_messages += 1
+                        
+                        # Mark as processed in Redis to prevent future reprocessing
+                        if redis_client:
+                            try:
+                                duplicate_key = f"processed_msg:{channel}:{message_id}"
+                                redis_client.setex(duplicate_key, 86400, "1")  # 24 hours
+                            except Exception as redis_error:
+                                LOGGER.writeLog(f"Warning: Could not mark empty message {message_id} in Redis: {redis_error}")
+                        
+                        continue  # Skip to next message without queuing this one
                     
                     # Log that message is being queued for processing
                     message_id = message_data.get('Message_ID', 'N/A')

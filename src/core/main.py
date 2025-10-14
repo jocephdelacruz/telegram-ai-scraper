@@ -308,9 +308,14 @@ class TelegramAIScraper:
             channel_name = message_data.get('Channel', 'unknown')
             LOGGER.writeLog(f"Received message {message_data.get('Message_ID', 'unknown')} from {channel_name}")
 
-            # Skip empty messages
-            if not message_data.get('Message_Text', '').strip():
-                LOGGER.writeLog("Skipping message with no text content")
+            # Skip empty messages - check multiple possible text fields
+            message_text = (
+                message_data.get('Message_Text', '') or 
+                message_data.get('text', '') or 
+                message_data.get('Original_Text', '')
+            )
+            if not message_text or not message_text.strip():
+                LOGGER.writeLog(f"Skipping message {message_data.get('Message_ID', 'unknown')} with no meaningful text content")
                 return
 
             # Determine country for this message
