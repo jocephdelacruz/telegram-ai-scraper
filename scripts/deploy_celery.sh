@@ -138,11 +138,25 @@ start_worker() {
         --without-mingle \
         --detach
     
-    sleep 5
-    if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
-        print_success "$worker_name started (PID: $(cat "$pidfile"))"
+    # Wait up to 15 seconds for worker to fully initialize (especially data_services)
+    local max_wait=15
+    local count=0
+    
+    while [ $count -lt $max_wait ]; do
+        if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+            print_success "$worker_name started (PID: $(cat "$pidfile"))"
+            return 0
+        fi
+        sleep 1
+        count=$((count + 1))
+    done
+    
+    # Final check - sometimes the process starts but takes time to write PID
+    if pgrep -f "celery.*worker.*${worker_name}" > /dev/null; then
+        print_success "$worker_name is running (process detected, PID file may be delayed)"
+        return 0
     else
-        print_error "Failed to start $worker_name. Check if process is running manually."
+        print_error "Failed to start $worker_name after ${max_wait}s. Check logs for details."
         return 1
     fi
 }
