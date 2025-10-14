@@ -73,15 +73,32 @@ class SessionSafetyManager:
         # Check for lock file (additional safety)
         if os.path.exists(self.lock_file):
             try:
+                # Check if lock file is stale (older than 30 minutes)
+                lock_age = time.time() - os.path.getmtime(self.lock_file)
+                stale_threshold = 30 * 60  # 30 minutes in seconds
+                
+                if lock_age > stale_threshold:
+                    # Remove stale lock file
+                    try:
+                        os.remove(self.lock_file)
+                        print(f"🧹 Removed stale lock file (age: {int(lock_age/60)} minutes)")
+                        return True  # Safe to proceed after cleanup
+                    except OSError:
+                        pass  # Could not remove, treat as active lock
+                
+                # Lock file is recent, treat as active
                 with open(self.lock_file, 'r') as f:
                     lock_content = f.read().strip()
                 raise SessionSafetyError(
                     f"🛡️ PROTECTED: Session lock file exists - preventing conflict\n"
                     f"   Lock file: {self.lock_file}\n"
                     f"   Content: {lock_content}\n"
+                    f"   Age: {int(lock_age/60)} minutes\n"
                     f"   \n"
                     f"   Another process may be using the Telegram session.\n"
-                    f"   Wait for it to finish or manually remove the lock file if stuck."
+                    f"   Wait for it to finish or manually remove the lock file if stuck.\n"
+                    f"   \n"
+                    f"   Manual cleanup: rm {self.lock_file}"
                 )
             except (IOError, OSError):
                 pass  # Lock file might be in use or temporary

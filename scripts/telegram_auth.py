@@ -325,23 +325,93 @@ async def authenticate_telegram(force_renewal=False):
             pass
 
 def safe_worker_stop():
-    """Stop workers safely for session operations"""
+    """Stop workers safely for session operations with proper session cleanup wait"""
     import subprocess
+    import time
+    from src.integrations.session_safety import SessionSafetyManager
+    
     try:
+        print("🛑 Stopping Celery workers...")
         result = subprocess.run(['./scripts/deploy_celery.sh', 'stop'], 
                               capture_output=True, text=True, cwd=project_root)
-        return result.returncode == 0
-    except Exception:
+        
+        if result.returncode != 0:
+            print(f"❌ Worker stop script failed: {result.stderr}")
+            return False
+        
+        print("⏳ Waiting for complete session cleanup...")
+        
+        # Wait for session safety to confirm no workers are using session
+        safety = SessionSafetyManager()
+        max_wait_time = 30  # Maximum 30 seconds wait
+        check_interval = 2  # Check every 2 seconds
+        waited = 0
+        
+        while waited < max_wait_time:
+            try:
+                # Try to get session safety - if it succeeds, workers are stopped
+                safety.check_session_safety("worker_stop_verification")
+                print("✅ Session cleanup confirmed - all workers stopped")
+                return True
+            except Exception:
+                # Workers still running, continue waiting
+                print(f"⏳ Still waiting for session cleanup... ({waited}s/{max_wait_time}s)")
+                time.sleep(check_interval)
+                waited += check_interval
+        
+        print("⚠️  Warning: Session cleanup timeout - proceeding anyway")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error during worker stop: {e}")
         return False
 
 def safe_worker_start():
-    """Start workers after session operations"""
+    """Start workers after session operations with verification"""
     import subprocess
+    import time
+    
     try:
+        print("🚀 Starting Celery workers...")
         result = subprocess.run(['./scripts/deploy_celery.sh', 'start'], 
                               capture_output=True, text=True, cwd=project_root)
-        return result.returncode == 0
-    except Exception:
+        
+        if result.returncode != 0:
+            print(f"❌ Worker start script failed: {result.stderr}")
+            return False
+        
+        print("⏳ Waiting for workers to initialize...")
+        
+        # Wait for workers to be properly initialized
+        max_wait_time = 20  # Maximum 20 seconds wait
+        check_interval = 3  # Check every 3 seconds
+        waited = 0
+        
+        while waited < max_wait_time:
+            try:
+                # Check if workers are responding
+                check_result = subprocess.run(['celery', '-A', 'src.tasks.telegram_celery_tasks.celery', 'inspect', 'ping'], 
+                                            capture_output=True, text=True, cwd=project_root, timeout=5)
+                
+                if check_result.returncode == 0:
+                    print("✅ Workers initialized and responding")
+                    return True
+                else:
+                    print(f"⏳ Workers still initializing... ({waited}s/{max_wait_time}s)")
+                    
+            except subprocess.TimeoutExpired:
+                print(f"⏳ Workers still starting... ({waited}s/{max_wait_time}s)")
+            except Exception as e:
+                print(f"⏳ Checking workers... ({waited}s/{max_wait_time}s)")
+            
+            time.sleep(check_interval)
+            waited += check_interval
+        
+        print("⚠️  Warning: Worker initialization timeout - they may still be starting")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error during worker start: {e}")
         return False
 
 def backup_session():
@@ -459,14 +529,34 @@ Session Safety:
             print("1️⃣  Stopping Celery workers...")
         if not safe_worker_stop():
             if not args.quiet:
-                print("⚠️  Warning: Could not stop workers cleanly")
-                print("   Continuing with renewal anyway...")
+                print("❌ CRITICAL: Could not stop workers safely")
+                print("🚨 Session renewal aborted to prevent phone logout!")
+                print("💡 Try: ./scripts/deploy_celery.sh stop --force")
+                print("💡 Then retry: telegram_session.sh renew")
+            return 1
         elif not args.quiet:
             print("✅ Workers stopped successfully")
         
-        # Step 2: Perform renewal
+        # Step 2: Final session safety verification before renewal
         if not args.quiet:
-            print("\n2️⃣  Starting session renewal...")
+            print("\n2️⃣  Final session safety check...")
+        
+        from src.integrations.session_safety import SessionSafetyManager, SessionSafetyError
+        safety = SessionSafetyManager()
+        try:
+            safety.check_session_safety("safe_renewal_verification")
+            if not args.quiet:
+                print("✅ Session is safe for renewal")
+        except SessionSafetyError as e:
+            if not args.quiet:
+                print(f"❌ CRITICAL: Session still in use - {e}")
+                print("🚨 Aborting renewal to prevent phone logout!")
+                print("💡 Wait a few minutes and try again")
+            return 1
+        
+        # Step 3: Perform renewal
+        if not args.quiet:
+            print("\n3️⃣  Starting session renewal...")
         
         try:
             result = asyncio.run(authenticate_telegram(force_renewal=True))
@@ -475,9 +565,9 @@ Session Safety:
                 if not args.quiet:
                     print("✅ Session renewal completed!")
                 
-                # Step 3: Restart workers
+                # Step 4: Restart workers
                 if not args.quiet:
-                    print("\n3️⃣  Restarting Celery workers...")
+                    print("\n4️⃣  Restarting Celery workers...")
                 
                 if safe_worker_start():
                     if not args.quiet:
