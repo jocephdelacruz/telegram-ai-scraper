@@ -337,7 +337,9 @@ stop_all_workers() {
     # Session Safety: Clean up stale session lock files after workers are stopped
     print_status "Cleaning up stale session lock files..."
     local lock_files_cleaned=0
-    for lock_file in *.lock 2>/dev/null; do
+    # Use shell nullglob option to handle cases where no .lock files exist
+    shopt -s nullglob
+    for lock_file in *.lock; do
         if [ -f "$lock_file" ]; then
             # Check if lock is stale (older than 5 minutes)
             if find "$lock_file" -mmin +5 -type f >/dev/null 2>&1; then
@@ -348,6 +350,8 @@ stop_all_workers() {
             fi
         fi
     done
+    # Reset nullglob option
+    shopt -u nullglob
     
     if [ $lock_files_cleaned -gt 0 ]; then
         print_success "Session safety: Cleaned $lock_files_cleaned stale lock file(s)"
