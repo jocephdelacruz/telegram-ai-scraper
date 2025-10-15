@@ -205,6 +205,20 @@ class MessageProcessor:
                         keywords.append(kw)
                 return keywords
             
+            # Helper function to get English equivalent of matched keyword
+            def get_english_keyword(matched_keyword, keyword_list):
+                """Find the English equivalent of a matched keyword from the original keyword pairs"""
+                for kw in keyword_list:
+                    if isinstance(kw, list):
+                        # Check if the matched keyword is in any position of the pair
+                        if matched_keyword in kw:
+                            # Always return the English version (index 0)
+                            return kw[0] if len(kw) > 0 else matched_keyword
+                    elif isinstance(kw, str) and kw == matched_keyword:
+                        # Single string keyword - assume it's already in English
+                        return matched_keyword
+                return matched_keyword  # Fallback to original if not found
+            
             sig_keywords = get_keywords(significant_keywords)
             triv_keywords = get_keywords(trivial_keywords)
             excl_keywords = get_keywords(exclude_keywords)
@@ -217,13 +231,18 @@ class MessageProcessor:
                     LOGGER.writeLog(f'MessageProcessor: Message excluded due to keyword: {keyword}')
                     return False, [], "excluded", translation_info
             
-            # Find keyword matches
-            matched_significant = [kw for kw in sig_keywords if self._matchesWholeWord(kw, analysis_text)]
-            matched_trivial = [kw for kw in triv_keywords if self._matchesWholeWord(kw, analysis_text)]
+            # Find keyword matches (using language-specific keywords for matching)
+            matched_significant_native = [kw for kw in sig_keywords if self._matchesWholeWord(kw, analysis_text)]
+            matched_trivial_native = [kw for kw in triv_keywords if self._matchesWholeWord(kw, analysis_text)]
+            
+            # Convert matched keywords to English equivalents for consistent reporting
+            matched_significant = [get_english_keyword(kw, significant_keywords) for kw in matched_significant_native]
+            matched_trivial = [get_english_keyword(kw, trivial_keywords) for kw in matched_trivial_native]
             
             # Classification logic
             if matched_significant and matched_trivial:
-                LOGGER.writeLog(f'MessageProcessor: Mixed keywords found - Significant: {matched_significant}, Trivial: {matched_trivial}')
+                LOGGER.writeLog(f'MessageProcessor: Mixed keywords found (English) - Significant: {matched_significant}, Trivial: {matched_trivial}')
+                LOGGER.writeLog(f'MessageProcessor: Native matches were - Significant: {matched_significant_native}, Trivial: {matched_trivial_native}')
                 if use_ai and self.openai_processor:
                     # Use AI to resolve ambiguous cases
                     LOGGER.writeLog(f'MessageProcessor: Using AI analysis for mixed keywords')
@@ -234,11 +253,13 @@ class MessageProcessor:
                     return True, matched_significant, "the list of SIGNIFICANT keywords", translation_info
             
             elif matched_significant and not matched_trivial:
-                LOGGER.writeLog(f'MessageProcessor: Message classified as Significant by keywords: {matched_significant}')
+                LOGGER.writeLog(f'MessageProcessor: Message classified as Significant by keywords (English): {matched_significant}')
+                LOGGER.writeLog(f'MessageProcessor: Native keywords that matched: {matched_significant_native}')
                 return True, matched_significant, "the list of SIGNIFICANT keywords", translation_info
 
             elif matched_trivial and not matched_significant:
-                LOGGER.writeLog(f'MessageProcessor: Message classified as Trivial by keywords: {matched_trivial}')
+                LOGGER.writeLog(f'MessageProcessor: Message classified as Trivial by keywords (English): {matched_trivial}')
+                LOGGER.writeLog(f'MessageProcessor: Native keywords that matched: {matched_trivial_native}')
                 return False, matched_trivial, "the list of TRIVIAL keywords", translation_info
 
             else:
