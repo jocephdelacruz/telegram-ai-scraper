@@ -249,41 +249,64 @@ class OpenAIProcessor:
 
 
    def _analyzeWithAI(self, message, significant_keywords, trivial_keywords, country_config=None):
-      """Internal method to analyze message using OpenAI when keyword filtering is inconclusive"""
+      """
+      Internal method to analyze message using OpenAI when keyword filtering is inconclusive.
+      
+      This method uses contextual analysis to determine if a message relates to the provided
+      significant or trivial keywords, rather than just exact word matching. The AI interprets
+      the meaning and context of the message to see if it corresponds to the significance
+      categories defined by the keywords.
+      
+      Args:
+          message (str): The message text to analyze
+          significant_keywords (list): List of keywords/topics that indicate significance
+          trivial_keywords (list): List of keywords/topics that indicate triviality  
+          country_config (dict): Optional country-specific configuration
+          
+      Returns:
+          tuple: (is_significant, matched_keywords, classification_method)
+      """
       try:
+         # Prepare keyword lists for AI analysis
+         significant_keywords_list = significant_keywords or []
+         trivial_keywords_list = trivial_keywords or []
+         
+         LOGGER.writeLog(f'OpenAIProcessor: Starting AI contextual analysis with {len(significant_keywords_list)} significant and {len(trivial_keywords_list)} trivial keywords')
+         
+         # Build keyword context for AI
+         keywords_context = ""
+         if significant_keywords_list or trivial_keywords_list:
+            keywords_context = f"""
+         KEYWORD CONTEXT FOR ANALYSIS:
+         - SIGNIFICANT keywords/topics to look for: {', '.join(significant_keywords_list) if significant_keywords_list else 'None provided'}
+         
+         Use these keywords as guidance to understand what types of content are considered significant vs trivial for this analysis.
+         Look for contextual meaning and related concepts, not just exact keyword matches.
+            """
+         
          # Build country-specific context for AI
          country_context = ""
          if country_config:
             country_name = country_config.get('name', 'this country')
             country_context = f"""
             
-        Country-specific context for {country_name}:
-        - Significant topics include: {', '.join(significant_keywords[:10])}{'...' if len(significant_keywords) > 10 else ''}
-        - Trivial topics include: {', '.join(trivial_keywords[:10])}{'...' if len(trivial_keywords) > 10 else ''}
-        
-        Use this country-specific context to better classify the message.
+         Country-specific context for {country_name}:
+         Consider regional context and local significance when analyzing the message.
             """
          
          prompt = f"""
-         Analyze the following message and determine if it is significant news that would be important for intelligence or security analysis.
+         Analyze the following message and determine if it is significant or trivial based on the provided keyword context.
 
-         Consider significant:
-         - Breaking news or urgent alerts
-         - Security incidents, cyber attacks, data breaches
-         - Political developments, government actions
-         - Economic disruptions or major market news
-         - Natural disasters or emergencies
-         - Suspicious activities or investigations
-         - Infrastructure issues or outages
+         Your task is to:
+         1. Understand the meaning and context of the message
+         2. Determine if the message content relates to or has similar meaning to any of the SIGNIFICANT keywords/topics
+         3. Make a classification based on contextual understanding, not just exact word matching
 
-         Consider NOT significant (trivial):
-         - Sports scores, entertainment news
-         - Weather forecasts (unless extreme)
-         - Celebrity gossip or lifestyle content
-         - Routine announcements
-         - Promotional content or advertisements{country_context}
+         Classification Rules:
+         - If the message context/meaning relates to SIGNIFICANT keywords/topics → classify as 'Significant'
+         - If the message doesn't clearly relate to any of the SIGNIFICANT keywords → classify as 'Trivial'
 
-         Message: "{message}"
+         Message to analyze: "{message}"
 
          Respond with only 'Significant' or 'Trivial' without any additional explanation.
          """
@@ -300,15 +323,15 @@ class OpenAIProcessor:
             answer = response.choices[0].message.content.strip()
             
             if answer == "Significant":
-               LOGGER.writeLog(f'OpenAIProcessor: Message classified as Significant by AI')
-               return True, [], "ai_significant"
+               LOGGER.writeLog(f'OpenAIProcessor: Message classified as Significant by AI using keyword contextual analysis')
+               return True, [], "ai_significant_contextual"
             else:
-               LOGGER.writeLog(f'OpenAIProcessor: Message classified as Trivial by AI')
-               return False, [], "ai_trivial"
+               LOGGER.writeLog(f'OpenAIProcessor: Message classified as Trivial by AI using keyword contextual analysis')
+               return False, [], "ai_trivial_contextual"
          
          # Default to trivial if no clear response
-         LOGGER.writeLog(f'OpenAIProcessor: Unable to classify message, defaulting to Trivial')
-         return False, [], "ai_default"
+         LOGGER.writeLog(f'OpenAIProcessor: Unable to classify message using AI contextual analysis, defaulting to Trivial')
+         return False, [], "ai_contextual_default"
          
       except Exception as e:
          LOGGER.writeLog(f'OpenAIProcessor: _analyzeWithAI - Exception: {e}')
@@ -317,19 +340,21 @@ class OpenAIProcessor:
          try:
             from .teams_utils import send_critical_exception
             send_critical_exception(
-               "OpenAIAnalysisError",
+               "OpenAIContextualAnalysisError",
                str(e),
                "OpenAIProcessor._analyzeWithAI",
                additional_context={
                   "message_length": len(message) if message else 0,
                   "significant_keywords_count": len(significant_keywords) if significant_keywords else 0,
-                  "model": self.openai_model
+                  "trivial_keywords_count": len(trivial_keywords) if trivial_keywords else 0,
+                  "model": self.openai_model,
+                  "analysis_type": "keyword_contextual"
                }
             )
          except Exception as admin_error:
-            LOGGER.writeLog(f"Failed to send OpenAI analysis error to admin: {admin_error}")
+            LOGGER.writeLog(f"Failed to send OpenAI contextual analysis error to admin: {admin_error}")
          
-         return False, [], "ai_error"
+         return False, [], "ai_contextual_error"
 
 
    def isArticleSignificant(self, article, significant_keywords=None, trivial_keywords=None):
