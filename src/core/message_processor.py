@@ -28,11 +28,11 @@ class MessageProcessor:
 
     def detectLanguage(self, text):
         """
-        Detect the language of the text using heuristic analysis.
+        Detect the language of the text using enhanced heuristic analysis.
         Returns the detected language: 'english', 'arabic', or 'unknown'
         
-        This method replaces the AI-based language detection for better performance
-        and cost optimization when working with dual-language keyword systems.
+        Enhanced to better detect Arabic text even when mixed with English URLs/text.
+        Prioritizes Arabic when substantial Arabic characters are present.
         """
         try:
             # Common English words that appear frequently
@@ -47,10 +47,11 @@ class MessageProcessor:
                 'after', 'back', 'other', 'many', 'than', 'then', 'new', 'some', 'take', 'day'
             ]
             
-            # Common Arabic words and particles
+            # Expanded Arabic words and particles for better detection
             common_arabic_words = [
+                # Original common words
                 'في', 'من', 'إلى', 'على', 'عن', 'مع', 'كل', 'هذا', 'هذه', 'ذلك', 'تلك',
-                'التي', 'الذي', 'التي', 'لكن', 'أو', 'أم', 'إذا', 'عند', 'بعد', 'قبل',
+                'التي', 'الذي', 'لكن', 'أو', 'أم', 'إذا', 'عند', 'بعد', 'قبل',
                 'حول', 'ضد', 'تحت', 'فوق', 'أمام', 'خلف', 'جانب', 'داخل', 'خارج', 'بين',
                 'أثناء', 'خلال', 'عبر', 'حتى', 'منذ', 'لدى', 'لديه', 'لديها', 'معه', 'معها',
                 'له', 'لها', 'لهم', 'لهن', 'منه', 'منها', 'منهم', 'منهن', 'إليه', 'إليها',
@@ -58,7 +59,14 @@ class MessageProcessor:
                 'أن', 'كان', 'كانت', 'يكون', 'تكون', 'سوف', 'قد', 'لقد', 'قام', 'قامت',
                 'يقول', 'تقول', 'قال', 'قالت', 'أقول', 'نقول', 'أعلن', 'أعلنت', 'يعلن',
                 'الآن', 'اليوم', 'أمس', 'غدا', 'هنا', 'هناك', 'هنالك', 'حيث', 'أين', 'متى',
-                'كيف', 'ماذا', 'لماذا', 'من', 'أي', 'كم', 'عاجل', 'أخبار', 'جديد', 'مهم'
+                'كيف', 'ماذا', 'لماذا', 'من', 'أي', 'كم', 'عاجل', 'أخبار', 'جديد', 'مهم',
+                # Additional common Arabic words for better detection
+                'الجامعة', 'بارزاني', 'السليمانية', 'نموذج', 'التعليم', 'الحر', 'بالعراق',
+                'الأميركية', 'رسخت', 'نيجيرفان', 'العراق', 'العربية', 'الدولة', 'الحكومة',
+                'الرئيس', 'الوزير', 'المجلس', 'البرلمان', 'الشعب', 'المواطن', 'البلد',
+                'المدينة', 'القرية', 'الشارع', 'البيت', 'المكتب', 'المدرسة', 'المستشفى',
+                'الشركة', 'المصنع', 'السوق', 'المتجر', 'المطعم', 'الفندق', 'المطار',
+                'الطريق', 'الجسر', 'النهر', 'البحر', 'الجبل', 'الصحراء', 'الغابة'
             ]
             
             # Convert to lowercase for comparison and split into words
@@ -90,20 +98,49 @@ class MessageProcessor:
             has_arabic_script = any('\u0600' <= char <= '\u06FF' for char in text)
             has_latin_script = any('a' <= char.lower() <= 'z' for char in text)
             
-            LOGGER.writeLog(f'MessageProcessor: Language detection - English ratio: {english_ratio:.2f}, Arabic ratio: {arabic_ratio:.2f}, Arabic script: {has_arabic_script}, Latin script: {has_latin_script}')
+            # Enhanced Arabic character analysis
+            total_chars = len(text.replace(' ', '').replace('\n', ''))  # Count non-whitespace characters
+            arabic_chars = sum(1 for char in text if '\u0600' <= char <= '\u06FF')  # Count Arabic characters
+            arabic_char_ratio = arabic_chars / total_chars if total_chars > 0 else 0
             
-            # Decision logic
-            if has_arabic_script and arabic_ratio > 0.1:
+            # Filter out URLs and technical text for cleaner analysis
+            text_without_urls = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', text)
+            text_without_urls = re.sub(r'[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', '', text_without_urls)  # Remove domain-like patterns
+            content_words = [word for word in text_without_urls.lower().split() if len(word) > 2 and not re.match(r'^[a-z0-9.:/-]+$', word)]
+            
+            LOGGER.writeLog(f'MessageProcessor: Language detection - English ratio: {english_ratio:.2f}, Arabic ratio: {arabic_ratio:.2f}, Arabic char ratio: {arabic_char_ratio:.2f}, Arabic script: {has_arabic_script}, Latin script: {has_latin_script}')
+            
+            # Enhanced decision logic prioritizing Arabic content
+            # Priority 1: High Arabic character content (substantial Arabic text)
+            if arabic_char_ratio > 0.3:  # More than 30% Arabic characters
+                LOGGER.writeLog(f'MessageProcessor: High Arabic character ratio ({arabic_char_ratio:.2f}) - classifying as Arabic')
                 return 'arabic'
-            elif has_latin_script and english_ratio > 0.2:
-                return 'english'
-            elif has_arabic_script and not has_latin_script:
+            
+            # Priority 2: Pure script types
+            if has_arabic_script and not has_latin_script:
                 return 'arabic'
             elif has_latin_script and not has_arabic_script:
                 return 'english'
-            elif arabic_ratio > english_ratio:
+            
+            # Priority 3: Mixed content with word-based analysis
+            if has_arabic_script and has_latin_script:
+                # For mixed content, check if Arabic words are substantial
+                if arabic_char_ratio > 0.15 and (arabic_ratio > 0.05 or arabic_matches > 0):
+                    LOGGER.writeLog(f'MessageProcessor: Mixed content with substantial Arabic ({arabic_char_ratio:.2f} chars, {arabic_ratio:.2f} words) - classifying as Arabic')
+                    return 'arabic'
+                elif english_ratio > 0.2:
+                    return 'english'
+            
+            # Priority 4: Word ratio comparison with Arabic preference
+            if arabic_ratio > 0 and arabic_ratio >= english_ratio:
                 return 'arabic'
             elif english_ratio > arabic_ratio:
+                return 'english'
+            
+            # Fallback: Check for any Arabic content
+            if has_arabic_script:
+                return 'arabic'
+            elif has_latin_script:
                 return 'english'
             else:
                 return 'unknown'
