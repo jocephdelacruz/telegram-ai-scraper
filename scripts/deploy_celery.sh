@@ -469,74 +469,102 @@ case "${1:-deploy}" in
                 fi
             fi
 
-            # Option to start monitoring
+            # Initialize components without blocking terminal
             echo ""
-            read -p "Start real-time monitoring now? (y/n): " -n 1 -r
+            echo "🔧 COMPONENT INITIALIZATION:"
+            echo "• Running component initialization (Teams admin notification, etc.)"
+            echo "• This ensures proper system startup notifications"
+            echo "• No terminal blocking - initializes and exits immediately"
             echo ""
-            if [[ $REPLY =~ ^[Yy]$ ]]; then
-                echo ""
-                echo "=========================================="
-                echo "🔄 Starting Telegram AI Scraper Monitoring"
-                echo "=========================================="
-                echo ""
-                print_status "Monitoring is now running in foreground mode"
-                print_status "Press Ctrl+C to stop monitoring and return to prompt"
-                echo ""
-                
-                # Start main application
-                python3 src/core/main.py --mode monitor
+            
+            print_status "Initializing system components..."
+            python3 src/core/main.py --mode init
+            
+            if [ $? -eq 0 ]; then
+                print_success "System components initialized successfully!"
+                echo "• Teams admin startup notification sent"
+                echo "• All components validated and ready"
             else
-                echo ""
-                echo "=========================================="
-                echo "Deployment Complete!"
-                echo "=========================================="
-                echo ""
-                print_success "Services running:"
-                case "$WORKER_MODE" in
-                    consolidated)
-                        echo "- Consolidated Worker: $ALL_WORKERS worker ($ALL_WORKERS concurrency)"
-                        echo "  Queues: telegram_processing,telegram_fetch,notifications,sharepoint,backup,maintenance,monitoring"
-                        ;;
-                    split)
-                        echo "- Main Processor: $MAIN_PROCESSOR_WORKERS workers (telegram_processing,telegram_fetch)"
-                        echo "- Data Services Worker: $DATA_SERVICES_WORKERS worker (sharepoint,backup,notifications)"
-                        echo "- Maintenance Worker: $MAINTENANCE_SPLIT_WORKERS worker (maintenance,monitoring)"
-                        ;;
-                    original)
-                        echo "- Telegram Processing/Fetch Workers: $MAIN_PROCESSOR_WORKERS workers"
-                        echo "- Notification Workers: $NOTIFICATIONS_WORKERS workers"
-                        echo "- SharePoint Workers: $SHAREPOINT_WORKERS workers"
-                        echo "- Backup Workers: $BACKUP_WORKERS worker"
-                        echo "- Maintenance Workers: $MAINTENANCE_WORKERS worker"
-                        ;;
-                esac
-                echo "- Celery Beat Scheduler: 1 process"
-                if [ -f "$PID_DIR/flower.pid" ]; then
-                    echo "- Flower Monitoring: http://localhost:5555"
-                fi
-                
-                # Show basic session status after deployment
-                echo ""
-                print_status "Session Status:"
-                if [ -f "telegram_session.session" ]; then
-                    echo "✅ Session file exists"
-                    echo "   💡 Check status: ./scripts/telegram_session.sh status"
-                else
-                    echo "❌ No session file - authentication needed"
-                    echo "   💡 Authenticate: ./scripts/telegram_session.sh auth"
-                fi
-                echo ""
-                echo "To start monitoring:"
-                echo "python3 src/core/main.py --mode monitor"
-                echo ""
-                echo "To manage workers:"
-                echo "./scripts/deploy_celery.sh stop     # Stop all workers"
-                echo "./scripts/deploy_celery.sh status   # Check status"
-                echo "./scripts/deploy_celery.sh logs     # View logs"
-                echo ""
-                echo "Log files: $LOG_DIR/"
-                echo "PID files: $PID_DIR/"
+                print_warning "Component initialization had issues (system may still work)"
             fi
+            
+            echo ""
+            echo "📋 MONITORING INFO:"
+            echo "• Real-time monitoring is handled automatically by Celery Beat"
+            echo "• Messages are fetched every 4 minutes without user intervention"
+            echo "• Component initialization completed (Teams notifications active)"
+            echo ""
+            if [ "$CALLED_FROM_QUICK_START" != "true" ]; then
+                read -p "Run optional main.py monitor (will block terminal)? (y/n): " -n 1 -r
+                echo ""
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    echo ""
+                    echo "=========================================="
+                    echo "🔄 Starting Optional Main.py Monitor"  
+                    echo "=========================================="
+                    echo ""
+                    print_status "Monitor running in foreground (blocks terminal)"
+                    print_status "Press Ctrl+C to stop and return to prompt"
+                    print_status "Note: Celery Beat continues independently"
+                    echo ""
+                    
+                    # Start main application (only if user explicitly wants it)
+                    python3 src/core/main.py --mode monitor
+                    exit 0  # Exit after monitoring stops
+                fi
+            fi
+            
+            # Always show deployment complete
+            echo ""
+            echo "=========================================="
+            echo "Deployment Complete!"
+            echo "=========================================="
+            echo ""
+            print_success "Services running:"
+            case "$WORKER_MODE" in
+                consolidated)
+                    echo "- Consolidated Worker: $ALL_WORKERS worker ($ALL_WORKERS concurrency)"
+                    echo "  Queues: telegram_processing,telegram_fetch,notifications,sharepoint,backup,maintenance,monitoring"
+                    ;;
+                split)
+                    echo "- Main Processor: $MAIN_PROCESSOR_WORKERS workers (telegram_processing,telegram_fetch)"
+                    echo "- Data Services Worker: $DATA_SERVICES_WORKERS worker (sharepoint,backup,notifications)"
+                    echo "- Maintenance Worker: $MAINTENANCE_SPLIT_WORKERS worker (maintenance,monitoring)"
+                    ;;
+                original)
+                    echo "- Telegram Processing/Fetch Workers: $MAIN_PROCESSOR_WORKERS workers"
+                    echo "- Notification Workers: $NOTIFICATIONS_WORKERS workers"
+                    echo "- SharePoint Workers: $SHAREPOINT_WORKERS workers"
+                    echo "- Backup Workers: $BACKUP_WORKERS worker"
+                    echo "- Maintenance Workers: $MAINTENANCE_WORKERS worker"
+                    ;;
+            esac
+            echo "- Celery Beat Scheduler: 1 process"
+            if [ -f "$PID_DIR/flower.pid" ]; then
+                echo "- Flower Monitoring: http://localhost:5555"
+            fi
+            
+            # Show basic session status after deployment
+            echo ""
+            print_status "Session Status:"
+            if [ -f "telegram_session.session" ]; then
+                echo "✅ Session file exists"
+                echo "   💡 Check status: ./scripts/telegram_session.sh status"
+            else
+                echo "❌ No session file - authentication needed"
+                echo "   💡 Authenticate: ./scripts/telegram_session.sh auth"
+            fi
+            echo ""
+            echo "To start monitoring:"
+            echo "python3 src/core/main.py --mode monitor"
+            echo ""
+            echo "To manage workers:"
+            echo "./scripts/deploy_celery.sh stop     # Stop all workers"
+            echo "./scripts/deploy_celery.sh status   # Check status"
+            echo "./scripts/deploy_celery.sh logs     # View logs"
+            echo ""
+            echo "Log files: $LOG_DIR/"
+            echo "PID files: $PID_DIR/"
         else
             print_error "Some workers failed to start. Check logs in $LOG_DIR/"
             exit 1

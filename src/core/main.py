@@ -87,17 +87,6 @@ class TelegramAIScraper:
             raise
 
 
-    def determine_message_country(self, channel_name):
-        """Determine which country a channel belongs to"""
-        countries = self.config.get('COUNTRIES', {})
-        
-        for country_code, country_info in countries.items():
-            if channel_name in country_info.get('channels', []):
-                return country_code, country_info
-        
-        # Default fallback if channel not found in any country
-        return None, None
-
     async def initialize_components(self, test_mode=False):
         """Initialize all components (Telegram, OpenAI, Teams, SharePoint)"""
         self._test_mode = test_mode  # Store test mode flag
@@ -313,8 +302,8 @@ async def main():
     """Main function"""
     parser = argparse.ArgumentParser(description='Telegram AI Scraper')
     parser.add_argument('--config', default='config.json', help='Configuration file path')
-    parser.add_argument('--mode', choices=['monitor', 'historical', 'test', 'test-full'], default='monitor',
-                       help='Operation mode: monitor (Celery Beat only), historical (deprecated), test (essential tests), test-full (comprehensive tests)')
+    parser.add_argument('--mode', choices=['monitor', 'historical', 'test', 'test-full', 'init'], default='monitor',
+                       help='Operation mode: monitor (Celery Beat only), historical (deprecated), test (essential tests), test-full (comprehensive tests), init (initialize components only)')
     
     args = parser.parse_args()
 
@@ -401,6 +390,23 @@ async def main():
                 LOGGER.writeLog("Some essential tests failed")
             
             sys.exit(result.returncode)
+            
+        elif args.mode == 'init':
+            print("🔧 INITIALIZATION MODE - Components Only")
+            print("")
+            print("📋 PURPOSE:")
+            print("   • Initialize all system components (OpenAI, Telegram, Teams, SharePoint)")
+            print("   • Send system startup notification to Teams admin")
+            print("   • Validate configuration and connections")
+            print("   • Exit immediately after initialization (no monitoring)")
+            print("")
+            print("✅ Components initialized successfully!")
+            print("   • System startup notification sent to Teams admin")
+            print("   • All components ready for Celery workers")
+            print("   • Configuration validated and loaded")
+            print("")
+            LOGGER.writeLog("Initialization mode completed - components initialized, exiting")
+            sys.exit(0)
             
         elif args.mode == 'historical':
             print("📚 HISTORICAL MODE - DEPRECATED")
