@@ -313,15 +313,15 @@ class OpenAIProcessor:
          1. The message is ONLY significant if it directly relates to, discusses, or has contextual meaning similar to ONE OR MORE of the provided SIGNIFICANT keywords
          2. Be very strict - do not classify as significant unless you can clearly identify which specific significant keyword(s) the message relates to
          3. General topics like education, routine announcements, or everyday activities should be classified as Trivial UNLESS they specifically relate to the significant keywords
-         4. If you classify as Significant, you MUST identify which specific keyword from the significant list best matches the message context{exception_context}
+         4. If you classify as Significant, you MUST identify which specific keyword from the significant list best matches the message context. Return the keyword IN ENGLISH regardless of the original language.{exception_context}
 
          Your response format:
-         - If Significant: "Significant: [specific keyword from the significant list that best matches]"
+         - If Significant: "Significant: [specific keyword from the significant list that best matches - ALWAYS IN ENGLISH]"
          - If Trivial: "Trivial"
 
          Message to analyze: "{message}"{country_context}
 
-         Remember: Be extremely strict. Only classify as Significant if the message clearly and directly relates to one of the specific significant keywords provided{"" if not exception_context else " AND does not match any exclusion criteria"}.
+         Remember: Be extremely strict. Only classify as Significant if the message clearly and directly relates to one of the specific significant keywords provided{"" if not exception_context else " AND does not match any exclusion criteria"}. Always return the matched keyword in English.
          """
 
          response = self.openai_client.chat.completions.create(
@@ -338,15 +338,6 @@ class OpenAIProcessor:
             if answer.startswith("Significant:"):
                # Extract the matched keyword from the response
                matched_keyword = answer.replace("Significant:", "").strip()
-               
-               # Translate the keyword to English if it's not already in English
-               if matched_keyword and not self._isLikelyEnglish(matched_keyword):
-                  try:
-                     success, translated_keyword = self.translateToEnglish(matched_keyword)
-                     if success:
-                        matched_keyword = translated_keyword
-                  except Exception as translate_error:
-                     LOGGER.writeLog(f'OpenAIProcessor: Failed to translate matched keyword "{matched_keyword}": {translate_error}')
                
                # Enhanced filtering: Second-pass exception check if enabled and exception rules not in prompt
                if use_enhanced_filtering and exception_rules and not exception_context:
