@@ -201,41 +201,6 @@ if [ ! -f "config/config_sample.json" ]; then
                "advertisement", "promo", "discount", "sale", "buy now", "limited time"
             ]
          }
-      },
-      "malaysia": {
-         "name": "Malaysia",
-         "channels": ["@thestaronline", "@malaymail", "@freemalaysiatoday"],
-         "teams_webhook": "your_malaysia_teams_webhook_url",
-         "teams_channel_name": "Malaysia Telegram Alerts",
-         "sharepoint_config": {
-            "site_name": "ATCSharedFiles",
-            "folder_path": "/Telegram_Feeds/Malaysia/",
-            "file_name": "Malaysia_Telegram_Feed.xlsx",
-            "significant_sheet": "Significant",
-            "trivial_sheet": "Trivial"
-         },
-         "message_filtering": {
-            "use_ai_for_message_filtering": false,
-            "translate_trivial_msgs": true,
-            "use_ai_for_translation": false,
-            "use_ai_for_enhanced_filtering": false,
-            "ai_exception_rules": [
-               "news about other countries or regions",
-               "international events not affecting Malaysia",
-               "foreign political developments",
-               "overseas incidents or accidents"
-            ],
-            "significant_keywords": [
-               "breaking news", "alert", "urgent", "emergency", "crisis", "attack", "security",
-               "cyber", "breach", "hack", "vulnerability", "malware", "ransomware", "phishing"
-            ],
-            "trivial_keywords": [
-               "weather", "sports", "entertainment", "celebrity", "gossip", "fashion", "food"
-            ],
-            "exclude_keywords": [
-               "advertisement", "promo", "discount", "sale", "buy now", "limited time"
-            ]
-         }
       }
    },
    "MS_SHAREPOINT_ACCESS": {

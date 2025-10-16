@@ -50,78 +50,6 @@
             ]
          }
       },
-      "singapore": {
-         "name": "Singapore",
-         "channels": ["@channelnewsasia", "@straitstimes", "@todayonlinesg"],
-         "teams_webhook": "your_singapore_teams_webhook_url",
-         "teams_channel_name": "Singapore Telegram Alerts",
-         "sharepoint_config": {
-            "site_name": "ATCSharedFiles",
-            "folder_path": "/Telegram_Feeds/Singapore/",
-            "file_name": "Singapore_Telegram_Feed.xlsx",
-            "significant_sheet": "Significant",
-            "trivial_sheet": "Trivial"
-         },
-         "message_filtering": {
-            "use_ai_for_message_filtering": false,
-            "translate_trivial_msgs": true,
-            "use_ai_for_translation": false,
-            "significant_keywords": [
-               "breaking news", "alert", "urgent", "emergency", "crisis", "attack", "security",
-               "cyber", "breach", "hack", "vulnerability", "malware", "ransomware", "phishing",
-               "data leak", "incident", "threat", "suspicious", "fraud", "scam", "investigation",
-               "pap", "opposition", "lee hsien loong", "lawrence wong", "grc", "smc", "parliament",
-               "monetary authority", "mas", "central bank", "trade war", "asean", "maritime",
-               "strait of malacca", "port", "changi", "water supply", "haze", "psi"
-            ],
-            "trivial_keywords": [
-               "weather", "sports", "entertainment", "celebrity", "gossip", "fashion", "food",
-               "travel", "lifestyle", "health tips", "recipe", "quiz", "game",
-               "hawker center", "mrt", "bus", "grab", "foodpanda", "shopping", "orchard road",
-               "sentosa", "marina bay", "clarke quay", "boat quay"
-            ],
-            "exclude_keywords": [
-               "advertisement", "promo", "discount", "sale", "buy now", "limited time",
-               "sponsor", "ad", "commercial", "marketing", "promotional"
-            ]
-         }
-      },
-      "malaysia": {
-         "name": "Malaysia",
-         "channels": ["@thestaronline", "@malaymail", "@freemalaysiatoday"],
-         "teams_webhook": "your_malaysia_teams_webhook_url",
-         "teams_channel_name": "Malaysia Telegram Alerts",
-         "sharepoint_config": {
-            "site_name": "ATCSharedFiles", 
-            "folder_path": "/Telegram_Feeds/Malaysia/",
-            "file_name": "Malaysia_Telegram_Feed.xlsx",
-            "significant_sheet": "Significant",
-            "trivial_sheet": "Trivial"
-         },
-         "message_filtering": {
-            "use_ai_for_message_filtering": false,
-            "translate_trivial_msgs": true,
-            "use_ai_for_translation": false,
-            "significant_keywords": [
-               "breaking news", "alert", "urgent", "emergency", "crisis", "attack", "security",
-               "cyber", "breach", "hack", "vulnerability", "malware", "ransomware", "phishing",
-               "data leak", "incident", "threat", "suspicious", "fraud", "scam", "investigation",
-               "najib", "mahathir", "anwar ibrahim", "umno", "pas", "dap", "pkr", "bn", "ph",
-               "parliament", "dewan rakyat", "agong", "sultan", "1mdb", "corruption", "macc",
-               "flood", "haze", "palm oil", "petronas", "south china sea", "sabah", "sarawak"
-            ],
-            "trivial_keywords": [
-               "weather", "sports", "entertainment", "celebrity", "gossip", "fashion", "food",
-               "travel", "lifestyle", "health tips", "recipe", "horoscope", "quiz", "game",
-               "badminton", "lee chong wei", "football", "harimau malaya", "shopping mall",
-               "raya", "chinese new year", "deepavali", "gawai", "kaamatan"
-            ],
-            "exclude_keywords": [
-               "advertisement", "promo", "discount", "sale", "buy now", "limited time",
-               "sponsor", "ad", "commercial", "marketing", "promotional"
-            ]
-         }
-      },
       "iraq": {
          "name": "Iraq",
          "channels": ["@wa3ediq", "@hasklay", "@alssaanetwork", "@ULIQUltraIraq", "@zagrostvnews", "@altaifaalmansoora", "@onenajaf2", "@teamsmediawar_1", "@moiiraqi", "@iraqicts", "@Saedalshuhada313", "@Mahdiasmr1995", "@Alwalaaee", "@Sabren_News1", "@centerkaf", "@SabrenNewss", "@Al_Nojaba", "@ayraqy_313", "@Ansaralqayim313", "@Alwaadalsadeq3", "@alghadeertv", "@shafaaqnews", "@inainaiq", "@iraqi1_news"],
@@ -142,7 +70,7 @@
             "significant_keywords": [
                ["protest", "احتجاج"],
                ["demonstration", "مظاهرة"],
-               ["march", "مسيرة"],
+               ["protest march", "مسيرة"],
                ["gathering", "تجمّع"],
                ["sit-in", "اعتصام"],
                ["uprising", "انتفاضة"],
@@ -155,7 +83,8 @@
                ["clash", "اشتباك"],
                ["injury", "إصابة"],
                ["victims", "ضحايا"],
-               ["urgent", "عاجـــــــــــــــل"]
+               ["urgent", "عاجـــــــــــــــل"],
+               ["launched attack from Iraq", "شن هجوم من العراق"]
             ],
             "trivial_keywords": [
                ["sports", "رياضة"],
@@ -168,7 +97,6 @@
                ["lifestyle", "أسلوب الحياة"],
                ["health tips", "نصائح صحية"],
                ["recipe", "وصفة"],
-               ["horoscope", "أبراج"],
                ["quiz", "اختبار"],
                ["game", "لعبة"],
                ["showbiz", "عالم الفن"],
@@ -182,18 +110,16 @@
                ["promo", "ترويج"],
                ["discount", "خصم"],
                ["sale", "تخفيضات"],
+               ["horoscope", "أبراج"],
                ["buy now", "اشتر الآن"],
-               ["limited time", "لفترة محدودة"],
-               ["sponsor", "راعي"],
                ["ad", "إعلان"],
                ["commercial", "تجاري"],
                ["marketing", "تسويق"],
                ["promotional", "ترويجي"]
             ],
             "ai_exception_rules": [
-               "The incident must have occurred in Iraq or directly impact the country",
-               "The news must be about events happening within Iraqi borders or affecting Iraqi citizens",
-               "Reports about similar events in other countries should be excluded unless they have clear implications for Iraq"
+               "news about other countries, regions, or international events that do not directly affect or involve Iraq",
+               "global news that only mentions Iraq in passing without direct relevance to Iraqi affairs"
             ]
          }
       }
