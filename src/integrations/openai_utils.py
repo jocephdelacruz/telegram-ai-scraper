@@ -296,18 +296,13 @@ class OpenAIProcessor:
          if use_enhanced_filtering and exception_rules:
             exception_text = "\n".join([f"- {rule}" for rule in exception_rules])
             exception_context = f"""
-            
-         ADDITIONAL EXCLUSION CRITERIA (ONLY APPLIES IF MESSAGE ALREADY MATCHES SIGNIFICANT KEYWORDS):
-         Even if the message relates to significant keywords, it should be classified as TRIVIAL if it matches any of these exception rules:
-         {exception_text}
-         
-         EXCLUSION GUIDELINES (ONLY APPLY AFTER KEYWORD MATCH IS CONFIRMED):
-         - These exclusion rules ONLY apply if the context of the message first matches significant keywords
-         - Only exclude if there is CLEAR, EXPLICIT indication that the news is about other countries/regions  
-         - If the location or country is NOT clearly specified, DO NOT exclude (give benefit of the doubt)
-         - When geographic context is unclear, keep as Significant rather than risk missing important news
-         - Examples: "Salah al-Din" could be in Iraq, "airstrikes" without location = keep as Significant
-            """
+
+            GEOGRAPHIC EXCLUSIONS (Only if keyword match found):
+            If the message relates to significant keywords BUT matches any rule below, classify as Trivial:
+            {exception_text}
+
+            NOTE: Only exclude if location is CLEARLY stated as non-{country_name}. When location is unclear, keep as Significant.
+                        """
          
          prompt = f"""
          Analyze the following message and determine if it is significant based STRICTLY on the provided significant keywords list.
@@ -317,9 +312,7 @@ class OpenAIProcessor:
          STRICT CLASSIFICATION RULES:
          1. FIRST: The message is ONLY significant if it directly relates to, discusses, or has contextual meaning similar to ONE OR MORE of the provided SIGNIFICANT keywords
          2. Be very strict - do not classify as significant unless you can clearly identify which specific significant keyword(s) the message relates to
-         3. General topics like education, routine announcements, or everyday activities should be classified as Trivial UNLESS they specifically relate to the significant keywords
-         4. SECOND: If you classify as Significant based on keyword match, you MUST identify which specific keyword from the significant list best matches the message context. Return the keyword IN ENGLISH regardless of the original language.{exception_context}
-
+         3. SECOND: If you classify as Significant based on keyword match, you MUST identify which specific keyword from the significant list best matches the message context. Return the keyword IN ENGLISH regardless of the original language.{exception_context}
          Your response format:
          - If Significant: "Significant: [specific keyword from the significant list that best matches - ALWAYS IN ENGLISH]"
          - If Trivial: "Trivial"
@@ -413,36 +406,25 @@ class OpenAIProcessor:
          CONTEXT: This message has already been determined to match significant keywords. We are now checking if it should be excluded due to geographic irrelevance.
 
          TARGET COUNTRY: {country_name}
-         
-         EXCEPTION RULES (if ANY of these apply, the message should be marked as NOT significant):
+
+         EXCLUSION RULES:
          {rules_text}
 
-         ANALYSIS INSTRUCTIONS:
-         1. Read the message carefully and understand its context
-         2. Check if the message matches ANY of the exception rules above
-         3. Be precise - only exclude if there's a clear match to an exception rule
-         4. Consider the geographic context and relevance to {country_name}
-         5. BENEFIT OF THE DOUBT: If location/country is unclear or not explicitly mentioned, DO NOT exclude
-         6. Only exclude when there's EXPLICIT evidence the news is about other countries/regions
+         INSTRUCTIONS:
+         - Only exclude if the message CLEARLY matches an exclusion rule
+         - If location is unclear or ambiguous, respond "INCLUDE"
+         - Be conservative: when in doubt, include rather than exclude
 
-         CRITICAL EXCLUSION GUIDELINES:
-         - If geographic location is ambiguous or not clearly stated, INCLUDE the message
-         - Names like "Salah al-Din" could refer to Iraqi locations - do not exclude unless clearly foreign
-         - Events like "airstrikes" without clear location context should be INCLUDED 
-         - When in doubt about relevance to {country_name}, choose INCLUDE rather than exclude
+         MESSAGE: "{message}"
 
-         MESSAGE TO ANALYZE: "{message}"
-
-         RESPONSE FORMAT:
-         - If matches an exception rule: "EXCLUDE: [specific rule that applies]"
-         - If does not match any exception rule: "INCLUDE"
-
-         Remember: Only exclude if the message CLEARLY and EXPLICITLY violates one of the specific exception rules listed above. When location or relevance is unclear, always INCLUDE.
-         """
+         RESPONSE:
+         - To exclude: "EXCLUDE: [specific rule]"
+         - To include: "INCLUDE"
+                  """
 
          response = self.openai_client.chat.completions.create(
             model=self.openai_model,
-            messages=[{"role": "system", "content": "You are a precise content analyst. Only exclude messages if they clearly match the provided exception rules."},
+            messages=[{"role": "system", "content": "You are a precise content analyst. Only exclude messages if they clearly match the provided exception rules. When in doubt, always include."},
                         {"role": "user", "content": prompt}],
             max_tokens=self.max_tokens,
             temperature=0.2  # Very low temperature for consistent exception checking
