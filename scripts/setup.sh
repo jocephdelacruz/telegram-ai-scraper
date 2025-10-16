@@ -148,6 +148,13 @@ if [ ! -f "config/config_sample.json" ]; then
             "use_ai_for_message_filtering": false,
             "translate_trivial_msgs": true,
             "use_ai_for_translation": false,
+            "use_ai_for_enhanced_filtering": false,
+            "ai_exception_rules": [
+               "news about other countries or regions",
+               "international events not affecting Philippines",
+               "foreign political developments",
+               "overseas incidents or accidents"
+            ],
             "significant_keywords": [
                "breaking news", "alert", "urgent", "emergency", "crisis", "attack", "security",
                "cyber", "breach", "hack", "vulnerability", "malware", "ransomware", "phishing"
@@ -176,6 +183,13 @@ if [ ! -f "config/config_sample.json" ]; then
             "use_ai_for_message_filtering": false,
             "translate_trivial_msgs": true,
             "use_ai_for_translation": false,
+            "use_ai_for_enhanced_filtering": false,
+            "ai_exception_rules": [
+               "news about other countries or regions",
+               "international events not affecting Singapore",
+               "foreign political developments",
+               "overseas incidents or accidents"
+            ],
             "significant_keywords": [
                "breaking news", "alert", "urgent", "emergency", "crisis", "attack", "security",
                "cyber", "breach", "hack", "vulnerability", "malware", "ransomware", "phishing"
@@ -204,6 +218,13 @@ if [ ! -f "config/config_sample.json" ]; then
             "use_ai_for_message_filtering": false,
             "translate_trivial_msgs": true,
             "use_ai_for_translation": false,
+            "use_ai_for_enhanced_filtering": false,
+            "ai_exception_rules": [
+               "news about other countries or regions",
+               "international events not affecting Malaysia",
+               "foreign political developments",
+               "overseas incidents or accidents"
+            ],
             "significant_keywords": [
                "breaking news", "alert", "urgent", "emergency", "crisis", "attack", "security",
                "cyber", "breach", "hack", "vulnerability", "malware", "ransomware", "phishing"
@@ -291,6 +312,11 @@ if [ "$CONFIG_EXISTS" = false ]; then
     echo "⚠️  Configuration Required:"
     echo "1. Copy config/config_sample.json to config/config.json"
     echo "2. Edit config/config.json with your actual API keys and settings"
+    echo ""
+    echo "🤖 AI Enhanced Filtering Configuration (Optional):"
+    echo "   • use_ai_for_enhanced_filtering: Enable AI exception checking"
+    echo "   • ai_exception_rules: List of patterns to filter out irrelevant news"
+    echo "   • Example: News about other countries, foreign political events"
     echo ""
     read -p "Have you configured config/config.json with your API keys? (y/n): " configured
     

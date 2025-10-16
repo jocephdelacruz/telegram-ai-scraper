@@ -136,6 +136,7 @@
          },
          "message_filtering": {
             "use_ai_for_message_filtering": false,
+            "use_ai_for_enhanced_filtering": false,
             "translate_trivial_msgs": true,
             "use_ai_for_translation": false,
             "significant_keywords": [
@@ -188,6 +189,11 @@
                ["commercial", "تجاري"],
                ["marketing", "تسويق"],
                ["promotional", "ترويجي"]
+            ],
+            "ai_exception_rules": [
+               "The incident must have occurred in Iraq or directly impact the country",
+               "The news must be about events happening within Iraqi borders or affecting Iraqi citizens",
+               "Reports about similar events in other countries should be excluded unless they have clear implications for Iraq"
             ]
          }
       }

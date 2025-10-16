@@ -12,6 +12,8 @@ An intelligent, high-performance Telegram message scraper that uses OpenAI to an
 - **Resilient Error Handling**: Smart retry logic with graceful degradation for API issues and rate limiting
 - **Distributed Processing**: Uses Celery workers for parallel processing of AI analysis, notifications, and data storage
 - **Intelligent Message Filtering**: Country-specific keyword filtering with AI fallback for optimal performance and accuracy
+- **AI Exception Filtering**: Advanced AI-powered filtering to reduce false positives from news about other countries
+- **Enhanced Language Detection**: Improved Arabic language detection with mixed-content analysis
 - **Advanced Translation Architecture**: Modular translation system with Google Translate (free) and OpenAI (paid) backends
 - **Smart Translation Control**: Configure whether to translate trivial messages and which translation method to use
 - **Optimized Language Detection**: Reuses language detection from message analysis to avoid redundant API calls
@@ -156,6 +158,7 @@ python3 -c "from src.integrations.teams_utils import send_critical_exception; se
 - **Country-Specific Message Filtering**: Each country has its own significant/trivial/exclude keyword sets for culturally relevant filtering
 - **Dual-Language Keyword Structure**: Keywords are now stored as `[EN, AR]` pairs (English and Arabic), and the system matches based on detected message language for optimal accuracy and cost savings
 - **Configurable AI Filtering**: For Iraq, you can enable/disable OpenAI context-based filtering with `use_ai_for_message_filtering` in `config.json` (default: true)
+- **AI Exception Filtering**: Advanced system to filter out false positives from news about other countries using `use_ai_for_enhanced_filtering` and `ai_exception_rules`
 - **Intelligent Keyword Processing**: System first applies keyword filtering in the detected language, then uses AI analysis for ambiguous cases if enabled
 - **Separate Teams Notifications**: Different Teams webhooks for each country with country flags
 - **Country-Specific SharePoint Files**: Separate Excel files per country with Significant and Trivial sheets
@@ -174,12 +177,21 @@ The system now features a **sophisticated translation architecture** that separa
 "message_filtering": {
   "use_ai_for_message_filtering": false,
   "translate_trivial_msgs": true,
-  "use_ai_for_translation": false
+  "use_ai_for_translation": false,
+  "use_ai_for_enhanced_filtering": false,
+  "ai_exception_rules": [
+    "news about other countries or regions",
+    "international events not affecting [country]",
+    "foreign political developments",
+    "overseas incidents or accidents"
+  ]
 }
 ```
 
 - **`translate_trivial_msgs`**: Control whether to translate trivial messages (saves costs)
 - **`use_ai_for_translation`**: Choose between Google Translate (free) and OpenAI (paid)
+- **`use_ai_for_enhanced_filtering`**: Enable AI-based exception filtering to reduce false positives
+- **`ai_exception_rules`**: List of patterns that should be filtered out as country-irrelevant
 
 #### Translation Methods
 
@@ -202,6 +214,49 @@ The system now features a **sophisticated translation architecture** that separa
 2. **Translation Decision**: Based on significance and `translate_trivial_msgs` setting
 3. **Translation Execution**: Use configured method (Google/OpenAI) with known source language
 4. **Storage & Alerts**: Store both original and translated text, send appropriate notifications
+
+### AI Exception Filtering System
+
+The **AI Exception Filtering** system reduces false positives by filtering out messages that match keywords but are not actually relevant to the target country. This is especially useful for international news that mentions significant keywords but relates to other countries.
+
+#### When to Enable
+
+Enable AI exception filtering when you experience:
+- News about other countries being classified as significant
+- International events appearing as locally relevant
+- Foreign political developments being categorized incorrectly
+- High volume of false positives from global news sources
+
+#### Configuration
+
+```json
+"message_filtering": {
+  "use_ai_for_enhanced_filtering": true,
+  "ai_exception_rules": [
+    "news about other countries or regions",
+    "international events not affecting Iraq",
+    "foreign political developments",
+    "overseas incidents or accidents"
+  ]
+}
+```
+
+#### How It Works
+
+1. **Keyword Matching**: Message first goes through normal keyword analysis
+2. **Exception Check**: If `use_ai_for_enhanced_filtering` is enabled, AI analyzes the message against exception rules
+3. **Geographic Relevance**: AI determines if the message is actually relevant to the target country
+4. **Final Classification**: Messages matching exceptions are marked as trivial, regardless of keyword matches
+
+#### Example Scenarios
+
+| Message | Keywords Match | Exception Filter | Final Result |
+|---------|---------------|------------------|--------------|
+| "Breaking: Cyber attack in Syria" | ✅ "Breaking", "Cyber attack" | ✅ Filtered (other country) | Trivial |
+| "Urgent: Baghdad airport security breach" | ✅ "Urgent", "security" | ❌ Iraq-specific | Significant |
+| "Iran announces new trade policies" | ✅ "announces" | ✅ Filtered (foreign policy) | Trivial |
+
+For detailed configuration and examples, see [AI Exception Filtering Guide](docs/AI_EXCEPTION_FILTERING_GUIDE.md).
 
 ### Iraq Message Filtering Example
 
@@ -545,6 +600,7 @@ chmod +x scripts/quick_start.sh
 | `./scripts/run_tests.sh --processing` | Message processing tests | Test dual-language logic | Iraq keyword matching, AI toggle, translation |
 | `./scripts/run_tests.sh --csv` | **CSV storage tests** | Test CSV storage pipeline | **PRODUCTION SAFE**: Uses dedicated test CSV files (`TEST_iraq_*.csv`), complete validation, automatic cleanup |
 | `./scripts/run_tests.sh --sharepoint` | **SharePoint storage tests** | Test SharePoint integration | **PRODUCTION SAFE**: Uses dedicated test sheets, Excel formula escaping (#NAME? fix), comprehensive integration testing |
+| `python3 tests/test_ai_exception_filtering.py` | **🤖 AI Exception Filtering tests** | Test AI exception rules | Tests message classification with geographic relevance filtering, exception rule validation |
 
 #### Legacy Testing & Validation Tools  
 | Script | Purpose | When to Use | Key Features |
@@ -967,6 +1023,15 @@ This guide covers:
 - Configuration examples for Philippines, Singapore, and Malaysia
 - Migration guide from single-country setups
 - Performance benefits and troubleshooting
+
+🤖 **[AI Exception Filtering Guide](docs/AI_EXCEPTION_FILTERING_GUIDE.md)**
+
+Advanced filtering system to reduce false positives:
+- Configuration and setup for exception rules
+- Geographic relevance filtering using AI
+- Example scenarios and best practices
+- Performance considerations and troubleshooting
+- Integration with existing keyword filtering
 
 ## Troubleshooting
 

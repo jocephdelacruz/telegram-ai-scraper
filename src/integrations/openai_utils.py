@@ -254,6 +254,7 @@ class OpenAIProcessor:
       
       This method uses contextual analysis to determine if a message relates to the provided
       significant keywords, and identifies which specific keyword concept matches the message.
+      Enhanced with exception rules to filter out country-irrelevant content.
       
       Args:
           message (str): The message text to analyze
@@ -269,16 +270,38 @@ class OpenAIProcessor:
          significant_keywords_list = significant_keywords or []
          trivial_keywords_list = trivial_keywords or []
          
-         LOGGER.writeLog(f'OpenAIProcessor: Starting AI contextual analysis with {len(significant_keywords_list)} significant and {len(trivial_keywords_list)} trivial keywords')
+         # Check for enhanced filtering configuration
+         use_enhanced_filtering = False
+         exception_rules = []
+         if country_config and 'message_filtering' in country_config:
+            filtering = country_config['message_filtering']
+            use_enhanced_filtering = filtering.get('use_ai_for_enhanced_filtering', False)
+            exception_rules = filtering.get('ai_exception_rules', [])
+         
+         LOGGER.writeLog(f'OpenAIProcessor: Starting AI contextual analysis with {len(significant_keywords_list)} significant and {len(trivial_keywords_list)} trivial keywords, enhanced filtering: {use_enhanced_filtering}')
          
          # Build country-specific context for AI
          country_context = ""
+         country_name = "Iraq"
          if country_config:
-            country_name = country_config.get('name', 'this country')
+            country_name = country_config.get('name', 'Iraq')
             country_context = f"""
             
          Country-specific context for {country_name}:
          Consider regional context and local significance when analyzing the message.
+            """
+         
+         # Build exception rules context if enhanced filtering is enabled
+         exception_context = ""
+         if use_enhanced_filtering and exception_rules:
+            exception_text = "\n".join([f"- {rule}" for rule in exception_rules])
+            exception_context = f"""
+            
+         ADDITIONAL EXCLUSION CRITERIA:
+         Even if the message relates to significant keywords, it should be classified as TRIVIAL if it matches any of these exception rules:
+         {exception_text}
+         
+         Apply these exclusion criteria strictly - if the message matches any exception rule, classify as Trivial regardless of keyword matches.
             """
          
          prompt = f"""
@@ -290,7 +313,7 @@ class OpenAIProcessor:
          1. The message is ONLY significant if it directly relates to, discusses, or has contextual meaning similar to ONE OR MORE of the provided SIGNIFICANT keywords
          2. Be very strict - do not classify as significant unless you can clearly identify which specific significant keyword(s) the message relates to
          3. General topics like education, routine announcements, or everyday activities should be classified as Trivial UNLESS they specifically relate to the significant keywords
-         4. If you classify as Significant, you MUST identify which specific keyword from the significant list best matches the message context
+         4. If you classify as Significant, you MUST identify which specific keyword from the significant list best matches the message context{exception_context}
 
          Your response format:
          - If Significant: "Significant: [specific keyword from the significant list that best matches]"
@@ -298,7 +321,7 @@ class OpenAIProcessor:
 
          Message to analyze: "{message}"{country_context}
 
-         Remember: Be extremely strict. Only classify as Significant if the message clearly and directly relates to one of the specific significant keywords provided.
+         Remember: Be extremely strict. Only classify as Significant if the message clearly and directly relates to one of the specific significant keywords provided{"" if not exception_context else " AND does not match any exclusion criteria"}.
          """
 
          response = self.openai_client.chat.completions.create(
@@ -324,6 +347,17 @@ class OpenAIProcessor:
                         matched_keyword = translated_keyword
                   except Exception as translate_error:
                      LOGGER.writeLog(f'OpenAIProcessor: Failed to translate matched keyword "{matched_keyword}": {translate_error}')
+               
+               # Enhanced filtering: Second-pass exception check if enabled and exception rules not in prompt
+               if use_enhanced_filtering and exception_rules and not exception_context:
+                  LOGGER.writeLog(f'OpenAIProcessor: Performing second-pass exception rule validation for significant message')
+                  matches_exception, matched_rule, reason = self._checkExceptionRules(message, exception_rules, country_config)
+                  
+                  if matches_exception:
+                     LOGGER.writeLog(f'OpenAIProcessor: Message excluded by second-pass exception check: {matched_rule}')
+                     return False, [], f"ai_excluded_by_exception_{reason}"
+                  else:
+                     LOGGER.writeLog(f'OpenAIProcessor: Message passed second-pass exception check')
                
                LOGGER.writeLog(f'OpenAIProcessor: Message classified as Significant by AI - Matched keyword: {matched_keyword}')
                return True, [matched_keyword] if matched_keyword else [], "ai_significant_contextual"
@@ -358,6 +392,106 @@ class OpenAIProcessor:
             LOGGER.writeLog(f"Failed to send OpenAI strict analysis error to admin: {admin_error}")
          
          return False, [], "ai_strict_error"
+
+
+   def _checkExceptionRules(self, message, exception_rules, country_config=None):
+      """
+      Check if a message context matches any of the provided exception rules.
+      This is used to filter out messages that match keywords but don't actually 
+      relate to the target country or specific criteria.
+      
+      Args:
+          message (str): The message text to analyze
+          exception_rules (list): List of exception rule strings to check against
+          country_config (dict): Optional country-specific configuration
+          
+      Returns:
+          tuple: (matches_exception, matched_rule, reason)
+      """
+      try:
+         if not exception_rules or len(exception_rules) == 0:
+            LOGGER.writeLog('OpenAIProcessor: No exception rules provided, skipping exception check')
+            return False, None, "no_exception_rules"
+         
+         country_name = "the target country"
+         if country_config:
+            country_name = country_config.get('name', 'the target country')
+         
+         LOGGER.writeLog(f'OpenAIProcessor: Checking message against {len(exception_rules)} exception rules for {country_name}')
+         
+         # Build exception rules context
+         rules_text = "\n".join([f"- {rule}" for rule in exception_rules])
+         
+         prompt = f"""
+         Analyze the following message to determine if it should be EXCLUDED from significance classification based on the provided exception rules.
+
+         TARGET COUNTRY: {country_name}
+         
+         EXCEPTION RULES (if ANY of these apply, the message should be marked as NOT significant):
+         {rules_text}
+
+         ANALYSIS INSTRUCTIONS:
+         1. Read the message carefully and understand its context
+         2. Check if the message matches ANY of the exception rules above
+         3. Be precise - only exclude if there's a clear match to an exception rule
+         4. Consider the geographic context and relevance to {country_name}
+
+         MESSAGE TO ANALYZE: "{message}"
+
+         RESPONSE FORMAT:
+         - If matches an exception rule: "EXCLUDE: [specific rule that applies]"
+         - If does not match any exception rule: "INCLUDE"
+
+         Remember: Only exclude if the message clearly violates one of the specific exception rules listed above.
+         """
+
+         response = self.openai_client.chat.completions.create(
+            model=self.openai_model,
+            messages=[{"role": "system", "content": "You are a precise content analyst. Only exclude messages if they clearly match the provided exception rules."},
+                        {"role": "user", "content": prompt}],
+            max_tokens=self.max_tokens,
+            temperature=0.2  # Very low temperature for consistent exception checking
+         )
+
+         if response.choices[0] and response.choices[0].message.content:
+            answer = response.choices[0].message.content.strip()
+            
+            if answer.startswith("EXCLUDE:"):
+               # Extract the matched exception rule
+               matched_rule = answer.replace("EXCLUDE:", "").strip()
+               LOGGER.writeLog(f'OpenAIProcessor: Message excluded by exception rule: {matched_rule}')
+               return True, matched_rule, "ai_exception_matched"
+               
+            elif answer == "INCLUDE":
+               LOGGER.writeLog(f'OpenAIProcessor: Message passed exception rule check - no exclusions apply')
+               return False, None, "ai_exception_passed"
+         
+         # Default to include if no clear response
+         LOGGER.writeLog(f'OpenAIProcessor: Unable to determine exception status, defaulting to INCLUDE')
+         return False, None, "ai_exception_default"
+         
+      except Exception as e:
+         LOGGER.writeLog(f'OpenAIProcessor: _checkExceptionRules - Exception: {e}')
+         
+         # Send critical exception to admin for exception checking failures
+         try:
+            from .teams_utils import send_critical_exception
+            send_critical_exception(
+               "OpenAIExceptionCheckError",
+               str(e),
+               "OpenAIProcessor._checkExceptionRules",
+               additional_context={
+                  "message_length": len(message) if message else 0,
+                  "exception_rules_count": len(exception_rules) if exception_rules else 0,
+                  "country_name": country_name,
+                  "model": self.openai_model
+               }
+            )
+         except Exception as admin_error:
+            LOGGER.writeLog(f"Failed to send OpenAI exception check error to admin: {admin_error}")
+         
+         # On error, default to include (don't exclude due to technical issues)
+         return False, None, "ai_exception_error"
 
 
    def isArticleSignificant(self, article, significant_keywords=None, trivial_keywords=None):
