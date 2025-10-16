@@ -277,19 +277,7 @@ class MessageProcessor:
             matched_trivial = [get_english_keyword(kw, trivial_keywords) for kw in matched_trivial_native]
             
             # Classification logic
-            if matched_significant and matched_trivial:
-                LOGGER.writeLog(f'MessageProcessor: Mixed keywords found (English) - Significant: {matched_significant}, Trivial: {matched_trivial}')
-                LOGGER.writeLog(f'MessageProcessor: Native matches were - Significant: {matched_significant_native}, Trivial: {matched_trivial_native}')
-                if use_ai and self.openai_processor:
-                    # Use AI to resolve ambiguous cases
-                    LOGGER.writeLog(f'MessageProcessor: Using AI analysis for mixed keywords')
-                    return self._analyzeWithAI(analysis_text, sig_keywords, triv_keywords, country_config, translation_info)
-                else:
-                    # Default to significant if AI is disabled
-                    LOGGER.writeLog(f'MessageProcessor: AI disabled, defaulting to significant for mixed keywords')
-                    return True, matched_significant, "the list of SIGNIFICANT keywords", translation_info
-            
-            elif matched_significant and not matched_trivial:
+            if matched_significant:
                 LOGGER.writeLog(f'MessageProcessor: Message classified as Significant by keywords (English): {matched_significant}')
                 LOGGER.writeLog(f'MessageProcessor: Native keywords that matched: {matched_significant_native}')
                 return True, matched_significant, "the list of SIGNIFICANT keywords", translation_info
