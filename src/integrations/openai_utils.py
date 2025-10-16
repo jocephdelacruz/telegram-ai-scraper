@@ -336,19 +336,8 @@ class OpenAIProcessor:
             answer = response.choices[0].message.content.strip()
             
             if answer.startswith("Significant:"):
-               # Extract the matched keyword from the response
+               # Extract the matched keyword from the response (should already be in English per prompt instructions)
                matched_keyword = answer.replace("Significant:", "").strip()
-               
-               # Enhanced filtering: Second-pass exception check if enabled and exception rules not in prompt
-               if use_enhanced_filtering and exception_rules and not exception_context:
-                  LOGGER.writeLog(f'OpenAIProcessor: Performing second-pass exception rule validation for significant message')
-                  matches_exception, matched_rule, reason = self._checkExceptionRules(message, exception_rules, country_config)
-                  
-                  if matches_exception:
-                     LOGGER.writeLog(f'OpenAIProcessor: Message excluded by second-pass exception check: {matched_rule}')
-                     return False, [], f"ai_excluded_by_exception_{reason}"
-                  else:
-                     LOGGER.writeLog(f'OpenAIProcessor: Message passed second-pass exception check')
                
                LOGGER.writeLog(f'OpenAIProcessor: Message classified as Significant by AI - Matched keyword: {matched_keyword}')
                return True, [matched_keyword] if matched_keyword else [], "ai_significant_contextual"
