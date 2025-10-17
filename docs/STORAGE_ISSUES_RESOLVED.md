@@ -26,12 +26,12 @@ The core issue was **data structure mismatch** in the storage functions:
 ### Data Flow Analysis
 The message data structure grows throughout processing:
 
-1. **Initial Parse** (17 fields): From `parse_message()` in telegram_utils.py
+1. **Initial Parse** (19 fields): From `parse_message()` in telegram_utils.py
 2. **Main Processing** (+7 fields): Added by main.py (country_code, received_at, etc.)
 3. **AI Processing** (+8 fields): Added by process_telegram_message (teams_task_id, ai_analysis, etc.)
-4. **Final Structure** (32+ fields): Complete message with all processing metadata
+4. **Final Structure** (34+ fields): Complete message with all processing metadata
 
-But the CSV/SharePoint expected only the original 17 TELEGRAM_EXCEL_FIELDS.
+But the CSV/SharePoint expected only the original 19 TELEGRAM_EXCEL_FIELDS.
 
 ## ✅ SOLUTIONS IMPLEMENTED
 

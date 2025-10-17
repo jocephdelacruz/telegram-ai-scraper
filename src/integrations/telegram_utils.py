@@ -337,14 +337,21 @@ class TelegramScraper:
             if not message.text and not message.media:
                 return None
 
+            # Generate Telegram message URL
+            # Format: https://t.me/channel_name/message_id (remove @ from channel)
+            clean_channel = channel_username.lstrip('@')
+            message_url = f"https://t.me/{clean_channel}/{message.id}"
+
             message_data = {
                 'Message_ID': message.id,
                 'Channel': channel_username,
+                'Message_URL': message_url,
                 'Date': message.date.strftime('%Y-%m-%d'),
                 'Time': message.date.strftime('%H:%M:%S'),
                 'Datetime_UTC': message.date,  # Store the original UTC datetime for accurate comparison
                 'Author': '',
                 'Message_Text': message.text or '',
+                'Attached_Links': '',  # Will be populated below
                 'AI_Category': '',
                 'Keywords_Matched': '',
                 'Message_Type': 'text',
@@ -392,10 +399,135 @@ class TelegramScraper:
                     if message.media.webpage.url:
                         message_data['Message_Text'] += f"\n\nURL: {message.media.webpage.url}"
 
+            # Extract attached links using dedicated function with comprehensive duplicate prevention
+            message_data['Attached_Links'] = self._extract_attached_links(message)
+
             return message_data
         except Exception as e:
             LOGGER.writeLog(f"Error parsing message {message.id}: {e}")
             return None
+
+
+    def _extract_attached_links(self, message):
+        """
+        Extract all attached links from a Telegram message using multiple methods
+        with comprehensive duplicate prevention
+        
+        Args:
+            message: Telegram message object
+            
+        Returns:
+            str: Comma-separated string of unique URLs, or empty string if none found
+        """
+        try:
+            # Use a set to automatically prevent duplicates during collection
+            links_set = set()
+            
+            # 1. Enhanced extraction from message entities (URLs, text links)
+            if hasattr(message, 'entities') and message.entities:
+                for entity in message.entities:
+                    try:
+                        # URL entities (plain text URLs) - extract from message text using offset/length
+                        if entity.__class__.__name__ == 'MessageEntityUrl':
+                            if message.text and hasattr(entity, 'offset') and hasattr(entity, 'length'):
+                                url_text = message.text[entity.offset:entity.offset + entity.length]
+                                if url_text and len(url_text) > 4:
+                                    links_set.add(url_text.strip())
+                        # Text link entities (hyperlinked text) - get URL from entity
+                        elif entity.__class__.__name__ == 'MessageEntityTextUrl':
+                            if hasattr(entity, 'url') and entity.url:
+                                links_set.add(entity.url.strip())
+                        # Fallback for entities with direct URL attribute
+                        elif hasattr(entity, 'url') and entity.url:
+                            links_set.add(entity.url.strip())
+                    except Exception as entity_error:
+                        LOGGER.writeLog(f"Error processing entity in message {message.id}: {entity_error}")
+                        continue
+            
+            # 2. Extract URLs from webpage media
+            if message.media and isinstance(message.media, MessageMediaWebPage):
+                if hasattr(message.media.webpage, 'url') and message.media.webpage.url:
+                    links_set.add(message.media.webpage.url.strip())
+                
+                # Also check for embedded URLs in webpage content
+                if hasattr(message.media.webpage, 'description') and message.media.webpage.description:
+                    import re
+                    # Extract URLs from webpage description
+                    url_pattern = r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
+                    description_urls = re.findall(url_pattern, message.media.webpage.description)
+                    for url in description_urls:
+                        if len(url) > 4:
+                            links_set.add(url.strip())
+            
+            # 3. Extract URLs from document attributes (avoid file download URLs)
+            if message.media and isinstance(message.media, MessageMediaDocument):
+                document = message.media.document
+                
+                # Check document attributes for public URLs (not download URLs)
+                if hasattr(document, 'attributes') and document.attributes:
+                    for attr in document.attributes:
+                        try:
+                            # Look for URL attributes that don't require authentication
+                            if hasattr(attr, 'url') and attr.url:
+                                # Skip if it looks like a file download URL that needs auth
+                                if not any(skip_term in attr.url.lower() for skip_term in ['download', 'file_id', 'access_token']):
+                                    links_set.add(attr.url.strip())
+                        except Exception as attr_error:
+                            continue
+            
+            # 4. Regex extraction for URLs missed by entities (backup method)
+            if message.text:
+                import re
+                # Comprehensive URL regex pattern
+                url_pattern = r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
+                text_urls = re.findall(url_pattern, message.text)
+                for url in text_urls:
+                    if len(url) > 4:
+                        links_set.add(url.strip())
+                
+                # Also look for common URL patterns without http/https
+                domain_pattern = r'(?:www\.)?[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}'
+                domain_matches = re.findall(domain_pattern, message.text)
+                for domain in domain_matches:
+                    # Add protocol if missing and it looks like a valid domain
+                    if '.' in domain and len(domain) > 4:
+                        full_url = f"https://{domain}"
+                        # Only add if not already covered by a full URL
+                        domain_already_covered = any(domain in existing_url for existing_url in links_set)
+                        if not domain_already_covered:
+                            links_set.add(full_url)
+            
+            # 5. Clean up URLs and apply final deduplication with normalization
+            cleaned_links = []
+            for link in links_set:
+                if link and len(link) > 4:
+                    # Remove trailing punctuation that might be captured
+                    cleaned_link = link.rstrip('.,;!?)')
+                    
+                    # Normalize URLs for better duplicate detection
+                    normalized = cleaned_link.lower()
+                    
+                    # Check if this normalized URL is already in our final list
+                    already_exists = any(
+                        existing.lower() == normalized or 
+                        existing.lower().rstrip('/') == normalized.rstrip('/') or
+                        normalized in existing.lower() or 
+                        existing.lower() in normalized
+                        for existing in cleaned_links
+                    )
+                    
+                    if not already_exists:
+                        cleaned_links.append(cleaned_link)
+            
+            # Sort links for consistent output
+            cleaned_links.sort()
+            
+            # Return comma-separated string
+            return ', '.join(cleaned_links) if cleaned_links else ''
+            
+        except Exception as e:
+            LOGGER.writeLog(f"Error extracting links from message {getattr(message, 'id', 'unknown')}: {e}")
+            return ''
 
 
     def set_message_handler(self, handler_function):

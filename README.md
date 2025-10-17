@@ -303,8 +303,8 @@ The system now supports **configurable field exclusions** for Teams notification
 ```json
 {
   "TELEGRAM_EXCEL_FIELDS": [
-    "Message_ID", "Channel", "Country", "Date", "Time", "Author", "Message_Text", 
-    "AI_Category", "AI_Reasoning", "Keywords_Matched", "Message_Type", 
+    "Message_ID", "Channel", "Message_URL", "Country", "Date", "Time", "Author", "Message_Text", 
+    "Attached_Links", "AI_Category", "AI_Reasoning", "Keywords_Matched", "Message_Type", 
     "Forward_From", "Media_Type", "Original_Text", "Original_Language", 
     "Was_Translated", "Processed_Date"
   ],
@@ -321,7 +321,7 @@ The system now supports **configurable field exclusions** for Teams notification
 
 #### How It Works
 
-- **TELEGRAM_EXCEL_FIELDS**: Master list of all available fields (17 total)
+- **TELEGRAM_EXCEL_FIELDS**: Master list of all available fields (19 total)
 - **EXCLUDED_TEAMS_FIELDS**: Fields to hide from Teams notifications (configurable)
 - **EXCLUDED_SHAREPOINT_FIELDS**: Fields to hide from SharePoint Excel files (configurable)
 - **CSV Files**: Always preserve all fields from `TELEGRAM_EXCEL_FIELDS` for complete data integrity
@@ -855,15 +855,17 @@ The system now features advanced dual-language keyword matching for optimal perf
 
 #### Complete Field List (TELEGRAM_EXCEL_FIELDS)
 
-The system processes 17 fields for each message:
+The system processes 19 fields for each message:
 
 **Core Message Fields:**
 - `Message_ID`: Unique Telegram message identifier
 - `Channel`: Source Telegram channel (e.g., @channelname)
+- `Message_URL`: Direct link to view the message in Telegram (https://t.me/channel/message_id)
 - `Date`: Message date (YYYY-MM-DD)
 - `Time`: Message time (HH:MM:SS)
 - `Author`: Message author (often same as Channel)
 - `Message_Text`: Processed message content (translated if needed)
+- `Attached_Links`: Comma-separated list of URLs extracted from the message
 
 **Analysis Fields:**
 - `AI_Category`: Significance classification (Significant/Trivial)
@@ -884,9 +886,9 @@ The system processes 17 fields for each message:
 
 #### Storage Strategy
 
-- **CSV Files**: Store ALL 17 fields for complete data preservation and future database migration
-- **Teams Notifications**: Show 9 user-relevant fields (8 excluded via config)
-- **SharePoint Excel**: Show 9 user-relevant fields (8 excluded via config)
+- **CSV Files**: Store ALL 19 fields for complete data preservation and future database migration
+- **Teams Notifications**: Show 11 user-relevant fields (8 excluded via config) - includes Message_URL and Attached_Links
+- **SharePoint Excel**: Show 11 user-relevant fields (8 excluded via config)
 - **Configurable**: Easily customize what fields appear in Teams/SharePoint via `config.json`
 
 ## Logging

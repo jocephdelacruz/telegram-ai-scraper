@@ -212,9 +212,9 @@ if [ ! -f "config/config_sample.json" ]; then
       "RangeAddressToClear": "A1:Z800"
    },
    "TELEGRAM_EXCEL_FIELDS": [
-      "Message_ID", "Channel", "Country", "Date", "Time", "Author", "Message_Text", 
-      "AI_Category", "AI_Reasoning", "Keywords_Matched", "Message_Type", "Forward_From", 
-      "Media_Type", "Original_Text", "Original_Language", "Was_Translated", "Processed_Date"
+      "Message_ID", "Channel", "Message_URL", "Country", "Date", "Time", "Author", "Message_Text", 
+      "Attached_Links", "AI_Category", "AI_Reasoning", "Keywords_Matched", "Message_Type", 
+      "Forward_From", "Media_Type", "Original_Text", "Original_Language", "Was_Translated", "Processed_Date"
    ],
    "EXCLUDED_TEAMS_FIELDS": [
       "Country", "AI_Category", "Message_Type", "Forward_From", "Media_Type", "Was_Translated", "Processed_Date", "Author"

@@ -99,12 +99,14 @@ class CSVMessageStorageTestSuite:
         return {
             'Message_ID': 100001,
             'Channel': '@minimal_test',
+            'Message_URL': 'https://t.me/minimal_test/100001',
             'Country': 'Iraq',
             'Date': '2025-10-11',
             'Time': '22:30:00',
-            'Author': '@test_minimal',
+            'Author': '@test_author',
             'Message_Text': 'Minimal test message for CSV storage',
-            'AI_Category': 'Trivial',
+            'Attached_Links': '',
+            'AI_Category': 'Significant',
             'AI_Reasoning': 'Test message - minimal fields',
             'Keywords_Matched': 'minimal, test',
             'Message_Type': 'text',
@@ -122,11 +124,13 @@ class CSVMessageStorageTestSuite:
             # Expected CSV fields
             'Message_ID': 100002,
             'Channel': '@comprehensive_test',
+            'Message_URL': 'https://t.me/comprehensive_test/100002',
             'Country': 'Iraq',
             'Date': '2025-10-11',
             'Time': '22:35:00',
             'Author': '@test_comprehensive',
             'Message_Text': 'Comprehensive test message with extra processing fields',
+            'Attached_Links': 'https://example.com, https://test.com',
             'AI_Category': 'Significant',
             'AI_Reasoning': 'Test message - comprehensive with extra fields',
             'Keywords_Matched': 'comprehensive, test, extra',
@@ -158,11 +162,13 @@ class CSVMessageStorageTestSuite:
         return {
             'Message_ID': 100003,
             'Channel': '@malformed_test',
+            'Message_URL': 'https://t.me/malformed_test/100003',
             # Missing Country field
             'Date': '2025-10-11',
             # Missing Time field
             'Author': '@test_malformed',
             'Message_Text': 'Malformed test message missing some fields',
+            'Attached_Links': '',
             'AI_Category': 'Significant',
             # Missing other fields...
         }

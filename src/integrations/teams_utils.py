@@ -184,6 +184,17 @@ class TeamsNotifier:
             if 'Processed_Date' not in excluded_fields and message_data.get('Processed_Date'):
                 facts.append({"name": "Processed Date", "value": message_data.get('Processed_Date')})
 
+            # Add Message URL for direct access to original message
+            if message_data.get('Message_URL'):
+                facts.append({"name": "View Message", "value": f"[Open in Telegram]({message_data.get('Message_URL')})"})
+
+            # Add Attached Links if available
+            if message_data.get('Attached_Links'):
+                attached_links = message_data.get('Attached_Links', '')
+                if len(attached_links) > 200:
+                    attached_links = attached_links[:200] + "..."
+                facts.append({"name": "Attached Links", "value": attached_links})
+
             # Create the message
             message_content_header = "**Message Content (English):**" if message_data.get('Was_Translated') else "**Message Content:**"
             full_message = f"{message_content_header}\n\n{message_text}"

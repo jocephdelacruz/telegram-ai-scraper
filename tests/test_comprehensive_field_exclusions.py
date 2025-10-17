@@ -133,11 +133,13 @@ def test_comprehensive_field_exclusions():
     sample_message = {
         "Message_ID": "12345",
         "Channel": "@testchannel",
+        "Message_URL": "https://t.me/testchannel/12345",
         "Country": "Iraq",
         "Date": "2024-10-13",
         "Time": "10:30:00",
         "Author": "@testauthor",
         "Message_Text": "Test message content",
+        "Attached_Links": "https://example.com, https://test.org",
         "AI_Category": "Significant",
         "AI_Reasoning": "Contains security keywords",
         "Keywords_Matched": "security, alert",
