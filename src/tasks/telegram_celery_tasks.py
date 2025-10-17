@@ -514,6 +514,28 @@ def fetch_new_messages_from_all_channels(self):
     try:
         LOGGER.writeLog("Starting periodic message fetch from all channels")
         
+        # CRITICAL SESSION SAFETY CHECK - Prevent dangerous session access
+        try:
+            from src.integrations.session_safety import SessionSafetyManager, SessionSafetyError
+            safety = SessionSafetyManager()
+            safety.check_session_safety("celery_fetch_task_execution")
+            LOGGER.writeLog("✅ Session safety verified - safe to proceed with fetch")
+        except Exception as safety_error:
+            LOGGER.writeLog(f"🚨 CRITICAL: Session safety check failed - {safety_error}")
+            LOGGER.writeLog("🛑 TASK ABORTED to prevent phone logout!")
+            LOGGER.writeLog("💡 Another process may be using the session or workers need cleanup")
+            
+            # Return failure instead of retry to prevent dangerous session access
+            return {
+                "status": "session_safety_abort",
+                "timestamp": datetime.now().isoformat(),
+                "error": f"Task aborted for session safety: {safety_error}",
+                "channels_checked": 0,
+                "messages_processed": 0,
+                "messages_skipped": 0,
+                "action_required": "check_session_safety_status"
+            }
+        
         # Load configuration
         import sys
         import os
@@ -608,10 +630,35 @@ def fetch_new_messages_from_all_channels(self):
         }
         
     except TelegramSessionError as e:
-        # Session issue - retry with backoff but limit attempts
+        # Session issue - CHECK SESSION SAFETY before retry to prevent phone logout
         LOGGER.writeLog(f"🔐 SESSION ISSUE: {e}")
+        
+        # CRITICAL: Check if session safety allows retry to prevent phone logout
+        try:
+            from src.integrations.session_safety import SessionSafetyManager, SessionSafetyError
+            safety = SessionSafetyManager()
+            safety.check_session_safety("celery_task_retry_validation")
+            LOGGER.writeLog("✅ Session safety verified - safe to retry")
+        except Exception as safety_error:
+            LOGGER.writeLog(f"� CRITICAL: Session safety check failed - {safety_error}")
+            LOGGER.writeLog("🛑 ABORTING RETRY to prevent phone logout!")
+            LOGGER.writeLog("💡 Please stop all workers, renew session, then restart workers")
+            LOGGER.writeLog("💡 Commands: ./scripts/deploy_celery.sh stop && ./scripts/telegram_session.sh renew && ./scripts/deploy_celery.sh start")
+            
+            # Return failure instead of retry to prevent dangerous session access
+            return {
+                "status": "session_safety_abort",
+                "timestamp": datetime.now().isoformat(),
+                "error": f"Session retry aborted for safety: {safety_error}",
+                "channels_checked": 0,
+                "messages_processed": 0,
+                "messages_skipped": 0,
+                "action_required": "stop_workers_renew_session_restart"
+            }
+        
+        # Only retry if session safety allows it
         if self.request.retries < 2:  # Only retry twice for session issues
-            LOGGER.writeLog("🔄 Will retry with 5-minute backoff")
+            LOGGER.writeLog("🔄 Will retry with 5-minute backoff (session safety verified)")
             raise self.retry(exc=e, countdown=300)  # Wait 5 minutes before retry
         else:
             LOGGER.writeLog("❌ SESSION ISSUE: Max retries reached, stopping periodic fetch. Run 'python3 scripts/telegram_auth.py' to re-authenticate.")

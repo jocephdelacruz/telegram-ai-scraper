@@ -237,12 +237,30 @@ cmd_renew() {
         return 1
     fi
     
+    # CRITICAL: Clear any dangerous queued tasks before renewal
+    print_status "Clearing potentially dangerous queued tasks..."
+    local cleared_tasks=0
+    for queue in "telegram_fetch" "telegram_processing"; do
+        local count=$(redis-cli llen "$queue" 2>/dev/null || echo "0")
+        if [ "$count" -gt 0 ]; then
+            redis-cli del "$queue" >/dev/null 2>&1
+            print_warning "Cleared $count queued tasks from $queue queue"
+            cleared_tasks=$((cleared_tasks + count))
+        fi
+    done
+    
+    if [ $cleared_tasks -gt 0 ]; then
+        print_warning "Cleared $cleared_tasks total queued tasks to prevent session conflicts"
+    else
+        print_success "No dangerous queued tasks found"
+    fi
+    
     # Check session safety
     print_status "Checking session safety before renewal..."
     if ! run_python_safe "check_session_safety.py" >/dev/null 2>&1; then
         print_error "Cannot renew - session conflicts detected!"
         print_error "Stop all workers before renewal"
-        print_info "Run: ./scripts/deploy_celery.sh stop"
+        print_info "Run: ./scripts/deploy_celery.sh stop --force"
         return 1
     fi
     
@@ -256,6 +274,13 @@ cmd_renew() {
     if [ $exit_code -eq 0 ]; then
         print_success "Session renewal completed successfully!"
         print_info "Session is refreshed and ready for use"
+        
+        # Clear any remaining dangerous tasks after renewal
+        print_status "Final cleanup of any remaining queued tasks..."
+        for queue in "telegram_fetch" "telegram_processing"; do
+            redis-cli del "$queue" >/dev/null 2>&1
+        done
+        print_success "Queue cleanup completed"
     else
         print_error "Session renewal failed"
         print_info "Check session status: ./scripts/telegram_session status"
@@ -379,21 +404,39 @@ cmd_safety_check() {
     return $exit_code
 }
 
-# Command: diagnostics
-cmd_diagnostics() {
-    print_header "Comprehensive Session Diagnostics"
+# Command: clear-queues
+cmd_clear_queues() {
+    print_header "Clear Dangerous Queued Tasks"
     
-    run_python_safe "telegram_session_check.py"
-    local exit_code=$?
+    print_status "Checking for dangerous queued tasks..."
     
-    echo ""
-    if [ $exit_code -eq 0 ]; then
-        print_success "Diagnostics completed successfully"
+    local total_cleared=0
+    for queue in "telegram_fetch" "telegram_processing"; do
+        local count=$(redis-cli llen "$queue" 2>/dev/null || echo "0")
+        if [ "$count" -gt 0 ]; then
+            print_warning "Found $count tasks in $queue queue"
+            read -p "Clear these tasks? (y/N): " -n 1 -r
+            echo ""
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                redis-cli del "$queue" >/dev/null 2>&1
+                print_success "Cleared $count tasks from $queue queue"
+                total_cleared=$((total_cleared + count))
+            else
+                print_info "Skipped clearing $queue queue"
+            fi
+        else
+            print_success "No tasks found in $queue queue"
+        fi
+    done
+    
+    if [ $total_cleared -gt 0 ]; then
+        print_success "Cleared $total_cleared total dangerous tasks"
+        print_info "These tasks could have caused session conflicts"
     else
-        print_warning "Diagnostics completed with issues - see output above"
+        print_success "No dangerous tasks found - queues are clean"
     fi
     
-    return $exit_code
+    return 0
 }
 
 # Command: help
@@ -420,6 +463,9 @@ cmd_help() {
     echo "    backup               Create session backup"
     echo "    restore              Restore session from backup (interactive)"
     echo ""
+    echo "  🧹 MAINTENANCE:"
+    echo "    clear-queues         Clear dangerous queued tasks (interactive)"
+    echo ""
     echo "  ❓ HELP:"
     echo "    help                 Show this help message"
     echo ""
@@ -439,6 +485,9 @@ cmd_help() {
     echo ""
     echo "  # Check for session conflicts"
     echo "  ./scripts/telegram_session.sh safety-check"
+    echo ""
+    echo "  # Clear dangerous queued tasks"
+    echo "  ./scripts/telegram_session.sh clear-queues"
     echo ""
     echo "  # Run full diagnostics"
     echo "  ./scripts/telegram_session.sh diagnostics"
@@ -504,6 +553,9 @@ main() {
         "safety-check"|"safety"|"check-safety")
             cmd_safety_check "$@"
             ;;
+        "clear-queues"|"clear-queue"|"clearqueue")
+            cmd_clear_queues "$@"
+            ;;
         "diagnostics"|"diag"|"check")
             cmd_diagnostics "$@"
             ;;
@@ -513,7 +565,7 @@ main() {
         *)
             print_error "Unknown command: $command"
             echo ""
-            print_info "Available commands: status, test, auth, renew, backup, restore, safety-check, diagnostics, help"
+            print_info "Available commands: status, test, auth, renew, backup, restore, safety-check, clear-queues, diagnostics, help"
             echo ""
             print_info "Use './scripts/telegram_session help' for detailed usage information"
             return 1

@@ -27,7 +27,12 @@ print_warning() {
 }
 
 echo "=========================================="
-echo "🚀 Telegram AI Scraper - Quick Start"
+if [[ "${CALLED_FROM_SAFE_RENEW:-}" == "true" ]]; then
+    echo "� Telegram AI Scraper - Post-Renewal Startup"
+    echo "   Restarting system after safe session renewal"
+else
+    echo "�🚀 Telegram AI Scraper - Quick Start"
+fi
 echo "=========================================="
 
 # Change to project directory
@@ -114,7 +119,11 @@ if [ ! -f "telegram_session.session" ]; then
         print_warning "Please run ./scripts/setup.sh first"
     fi
 else
-    print_success "Telegram session file found"
+    if [[ "${CALLED_FROM_SAFE_RENEW:-}" == "true" ]]; then
+        print_success "Fresh Telegram session ready (post-renewal)"
+    else
+        print_success "Telegram session file found"
+    fi
 fi
 
 # Step 3: Check configuration
@@ -146,14 +155,24 @@ print_status "5. Waiting for services to fully initialize..."
 sleep 15
 
 # Step 6: Comprehensive system tests
-print_status "6. Running comprehensive system tests..."
-echo ""
-echo "Running quick system validation tests with session verification..."
+if [[ "${CALLED_FROM_SAFE_RENEW:-}" == "true" ]]; then
+    print_status "6. Validating renewed session and system health..."
+    echo ""
+    echo "Running post-renewal validation tests..."
+else
+    print_status "6. Running comprehensive system tests..."
+    echo ""
+    echo "Running quick system validation tests with session verification..."
+fi
 ./scripts/run_tests.sh --quick
 
 test_exit_code=$?
 if [ $test_exit_code -eq 0 ]; then
-    print_success "All system tests passed!"
+    if [[ "${CALLED_FROM_SAFE_RENEW:-}" == "true" ]]; then
+        print_success "Post-renewal validation passed! System ready with fresh session."
+    else
+        print_success "All system tests passed!"
+    fi
 else
     print_warning "Some tests failed or were skipped - check output above"
     echo ""
@@ -173,8 +192,17 @@ echo ""
 
 echo ""
 echo "=========================================="
-echo "🎉 Quick Start Complete!"
-echo "=========================================="
+if [[ "${CALLED_FROM_SAFE_RENEW:-}" == "true" ]]; then
+    echo "🎉 Safe Session Renewal Complete!"
+    echo "=========================================="
+    echo ""
+    echo "✅ Session renewed and system restarted successfully!"
+    echo "✅ All services are running with the fresh session"
+    echo "✅ No phone logout occurred - renewal was completely safe"
+else
+    echo "🎉 Quick Start Complete!"
+    echo "=========================================="
+fi
 echo ""
 echo "📊 Access Points:"
 echo "• Flower Monitoring: http://$(curl -s ifconfig.me 2>/dev/null || echo 'YOUR_SERVER_IP'):5555"

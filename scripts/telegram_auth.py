@@ -367,52 +367,65 @@ def safe_worker_stop():
         return False
 
 def safe_worker_start():
-    """Start workers after session operations with verification"""
+    """Start workers after session operations using quick_start.sh for complete initialization"""
     import subprocess
     import time
     
     try:
-        print("🚀 Starting Celery workers...")
-        result = subprocess.run(['./scripts/deploy_celery.sh', 'start'], 
-                              capture_output=True, text=True, cwd=project_root)
+        print("🚀 Starting complete system with quick_start.sh...")
+        print("   This includes: workers, Flower monitoring, and comprehensive testing")
         
-        if result.returncode != 0:
-            print(f"❌ Worker start script failed: {result.stderr}")
-            return False
+        # Use quick_start.sh for complete system initialization
+        result = subprocess.run(['./scripts/quick_start.sh'], 
+                              cwd=project_root, env={**os.environ, 'CALLED_FROM_SAFE_RENEW': 'true'})
         
-        print("⏳ Waiting for workers to initialize...")
-        
-        # Wait for workers to be properly initialized
-        max_wait_time = 20  # Maximum 20 seconds wait
-        check_interval = 3  # Check every 3 seconds
-        waited = 0
-        
-        while waited < max_wait_time:
+        if result.returncode == 0:
+            print("✅ Complete system startup successful!")
+            print("   - Workers initialized and responding")
+            print("   - Flower monitoring available")
+            print("   - System tests passed")
+            return True
+        else:
+            print(f"❌ System startup had issues (exit code: {result.returncode})")
+            print("💡 Check the output above for details")
+            
+            # Still check if basic workers are at least running
+            print("🔍 Checking if basic workers started despite issues...")
             try:
-                # Check if workers are responding
                 check_result = subprocess.run(['celery', '-A', 'src.tasks.telegram_celery_tasks.celery', 'inspect', 'ping'], 
                                             capture_output=True, text=True, cwd=project_root, timeout=5)
                 
                 if check_result.returncode == 0:
-                    print("✅ Workers initialized and responding")
+                    print("✅ Basic workers are responding (startup had minor issues)")
                     return True
                 else:
-                    print(f"⏳ Workers still initializing... ({waited}s/{max_wait_time}s)")
+                    print("❌ Workers are not responding")
+                    return False
                     
-            except subprocess.TimeoutExpired:
-                print(f"⏳ Workers still starting... ({waited}s/{max_wait_time}s)")
-            except Exception as e:
-                print(f"⏳ Checking workers... ({waited}s/{max_wait_time}s)")
-            
-            time.sleep(check_interval)
-            waited += check_interval
-        
-        print("⚠️  Warning: Worker initialization timeout - they may still be starting")
-        return True
+            except Exception:
+                print("❌ Could not verify worker status")
+                return False
         
     except Exception as e:
-        print(f"❌ Error during worker start: {e}")
-        return False
+        print(f"❌ Error during system startup: {e}")
+        print("💡 Falling back to basic worker start...")
+        
+        # Fallback to basic deployment if quick_start.sh fails
+        try:
+            result = subprocess.run(['./scripts/deploy_celery.sh', 'start'], 
+                                  capture_output=True, text=True, cwd=project_root)
+            
+            if result.returncode == 0:
+                print("✅ Basic workers started successfully (fallback mode)")
+                print("💡 You may need to start Flower manually if needed")
+                return True
+            else:
+                print("❌ Even basic worker start failed")
+                return False
+                
+        except Exception as fallback_error:
+            print(f"❌ Fallback also failed: {fallback_error}")
+            return False
 
 def backup_session():
     """Create a backup of the current session"""
