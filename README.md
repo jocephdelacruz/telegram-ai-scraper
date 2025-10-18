@@ -188,7 +188,7 @@ python3 -c "from src.integrations.teams_utils import send_critical_exception; se
 - **Country-Specific Message Filtering**: Each country has its own significant/trivial/exclude keyword sets for culturally relevant filtering
 - **Dual-Language Keyword Structure**: Keywords are now stored as `[EN, AR]` pairs (English and Arabic), and the system matches based on detected message language for optimal accuracy and cost savings
 - **Configurable AI Filtering**: For Iraq, you can enable/disable OpenAI context-based filtering with `use_ai_for_message_filtering` in `config.json` (default: true)
-- **AI Exception Filtering**: Advanced system to filter out false positives from news about other countries using `use_ai_for_enhanced_filtering` and `ai_exception_rules`
+- **AI Additional Criteria**: Advanced system to ensure messages are truly relevant to the target country using `use_ai_for_enhanced_filtering` and `additional_ai_criteria`
 - **Intelligent Keyword Processing**: System first applies keyword filtering in the detected language, then uses AI analysis for ambiguous cases if enabled
 - **Separate Teams Notifications**: Different Teams webhooks for each country with country flags
 - **Country-Specific SharePoint Files**: Separate Excel files per country with Significant and Trivial sheets
@@ -209,19 +209,19 @@ The system now features a **sophisticated translation architecture** that separa
   "translate_trivial_msgs": true,
   "use_ai_for_translation": false,
   "use_ai_for_enhanced_filtering": false,
-  "ai_exception_rules": [
-    "news about other countries or regions",
-    "international events not affecting [country]",
-    "foreign political developments",
-    "overseas incidents or accidents"
+  "additional_ai_criteria": [
+    "The message discusses news or events that either happened inside Iraq, directly affects or involves Iraq",
+    "The message is about Iraqi citizens, Iraqi entities, or Iraqi government actions",
+    "The message relates to economic, political, security, or social developments in Iraq",
+    "The message has relevance to Iraq's regional relationships or international affairs"
   ]
 }
 ```
 
 - **`translate_trivial_msgs`**: Control whether to translate trivial messages (saves costs)
 - **`use_ai_for_translation`**: Choose between Google Translate (free) and OpenAI (paid)
-- **`use_ai_for_enhanced_filtering`**: Enable AI-based exception filtering to reduce false positives
-- **`ai_exception_rules`**: List of patterns that should be filtered out as country-irrelevant
+- **`use_ai_for_enhanced_filtering`**: Enable AI-based additional criteria to ensure relevance to target country
+- **`additional_ai_criteria`**: List of criteria that must ALL be met for messages to remain significant
 
 #### Translation Methods
 
@@ -262,11 +262,11 @@ Enable AI exception filtering when you experience:
 ```json
 "message_filtering": {
   "use_ai_for_enhanced_filtering": true,
-  "ai_exception_rules": [
-    "news about other countries or regions",
-    "international events not affecting Iraq",
-    "foreign political developments",
-    "overseas incidents or accidents"
+  "additional_ai_criteria": [
+    "The message discusses news or events that either happened inside Iraq, directly affects or involves Iraq",
+    "The message is about Iraqi citizens, Iraqi entities, or Iraqi government actions",
+    "The message relates to economic, political, security, or social developments in Iraq",
+    "The message has relevance to Iraq's regional relationships or international affairs"
   ]
 }
 ```
@@ -274,19 +274,19 @@ Enable AI exception filtering when you experience:
 #### How It Works
 
 1. **Keyword Matching**: Message first goes through normal keyword analysis
-2. **Exception Check**: If `use_ai_for_enhanced_filtering` is enabled, AI analyzes the message against exception rules
-3. **Geographic Relevance**: AI determines if the message is actually relevant to the target country
-4. **Final Classification**: Messages matching exceptions are marked as trivial, regardless of keyword matches
+2. **Additional Criteria Check**: If `use_ai_for_enhanced_filtering` is enabled, AI verifies ALL additional criteria are met
+3. **Geographic Relevance**: AI determines if the message truly relates to the target country
+4. **Final Classification**: Messages failing any criteria are marked as trivial, ensuring only relevant content
 
 #### Example Scenarios
 
-| Message | Keywords Match | Exception Filter | Final Result |
-|---------|---------------|------------------|--------------|
-| "Breaking: Cyber attack in Syria" | ✅ "Breaking", "Cyber attack" | ✅ Filtered (other country) | Trivial |
-| "Urgent: Baghdad airport security breach" | ✅ "Urgent", "security" | ❌ Iraq-specific | Significant |
-| "Iran announces new trade policies" | ✅ "announces" | ✅ Filtered (foreign policy) | Trivial |
+| Message | Keywords Match | Additional Criteria | Final Result |
+|---------|---------------|-------------------|--------------|
+| "Breaking: Cyber attack in Syria" | ✅ "Breaking", "Cyber attack" | ❌ Not Iraq-related | Trivial |
+| "Urgent: Baghdad airport security breach" | ✅ "Urgent", "security" | ✅ Iraq-specific event | Significant |
+| "Iran announces new trade policies" | ✅ "announces" | ❌ Foreign policy only | Trivial |
 
-For detailed configuration and examples, see [AI Exception Filtering Guide](docs/AI_EXCEPTION_FILTERING_GUIDE.md).
+For detailed configuration and examples, see [AI Criteria Migration Summary](docs/AI_CRITERIA_MIGRATION_SUMMARY.md).
 
 ### Iraq Message Filtering Example
 

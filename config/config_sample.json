@@ -117,9 +117,11 @@
                ["marketing", "تسويق"],
                ["promotional", "ترويجي"]
             ],
-            "ai_exception_rules": [
-               "news about other countries, regions, or international events that do not directly affect or involve Iraq",
-               "global news that only mentions Iraq in passing without direct relevance to Iraqi affairs"
+            "additional_ai_criteria": [
+               "The message discusses news or events that either happened inside Iraq, directly affects or involves Iraq, or where either the instigator or the target is an Iraqi citizen or Iraqi entity",
+               "The message is about Iraqi government actions, Iraqi political developments, or Iraqi domestic affairs",
+               "The message relates to economic, security, social, or cultural developments specifically within Iraq",
+               "The message involves Iraq's regional relationships, international affairs, or direct impact on Iraqi interests"
             ]
          }
       }

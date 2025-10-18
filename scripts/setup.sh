@@ -149,11 +149,11 @@ if [ ! -f "config/config_sample.json" ]; then
             "translate_trivial_msgs": true,
             "use_ai_for_translation": false,
             "use_ai_for_enhanced_filtering": false,
-            "ai_exception_rules": [
-               "news about other countries or regions",
-               "international events not affecting Philippines",
-               "foreign political developments",
-               "overseas incidents or accidents"
+            "additional_ai_criteria": [
+               "The message discusses news or events that either happened inside Philippines, directly affects or involves Philippines",
+               "The message is about Filipino citizens, Filipino entities, or Filipino government actions",
+               "The message relates to economic, political, security, or social developments in Philippines",
+               "The message has relevance to Philippines' regional relationships or international affairs"
             ],
             "significant_keywords": [
                "breaking news", "alert", "urgent", "emergency", "crisis", "attack", "security",
@@ -184,11 +184,11 @@ if [ ! -f "config/config_sample.json" ]; then
             "translate_trivial_msgs": true,
             "use_ai_for_translation": false,
             "use_ai_for_enhanced_filtering": false,
-            "ai_exception_rules": [
-               "news about other countries or regions",
-               "international events not affecting Singapore",
-               "foreign political developments",
-               "overseas incidents or accidents"
+            "additional_ai_criteria": [
+               "The message discusses news or events that either happened inside Singapore, directly affects or involves Singapore",
+               "The message is about Singaporean citizens, Singaporean entities, or Singaporean government actions",
+               "The message relates to economic, political, security, or social developments in Singapore",
+               "The message has relevance to Singapore's regional relationships or international affairs"
             ],
             "significant_keywords": [
                "breaking news", "alert", "urgent", "emergency", "crisis", "attack", "security",
@@ -279,9 +279,9 @@ if [ "$CONFIG_EXISTS" = false ]; then
     echo "2. Edit config/config.json with your actual API keys and settings"
     echo ""
     echo "🤖 AI Enhanced Filtering Configuration (Optional):"
-    echo "   • use_ai_for_enhanced_filtering: Enable AI exception checking"
-    echo "   • ai_exception_rules: List of patterns to filter out irrelevant news"
-    echo "   • Example: News about other countries, foreign political events"
+    echo "   • use_ai_for_enhanced_filtering: Enable AI additional criteria checking"
+    echo "   • additional_ai_criteria: List of criteria that must ALL be met for significance"
+    echo "   • Example: Iraq-specific events, Iraqi government actions, domestic affairs"
     echo ""
     read -p "Have you configured config/config.json with your API keys? (y/n): " configured
     
