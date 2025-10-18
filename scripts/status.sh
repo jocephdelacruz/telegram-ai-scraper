@@ -162,11 +162,12 @@ fi
 echo ""
 echo "Useful Commands:"
 echo "───────────────"
-echo "Start all:     ./scripts/deploy_celery.sh"
-echo "Stop all:      ./scripts/deploy_celery.sh stop"
-echo "Monitor web:   http://localhost:5555 (if Flower is running)"
-echo "View logs:     tail -f logs/celery_*.log"
-echo "Test system:   python3 src/core/main.py --mode test"
+echo "Start all:      ./scripts/deploy_celery.sh"
+echo "Stop all:       ./scripts/deploy_celery.sh stop"
+echo "Monitor web:    http://localhost:5555 (if Flower is running)"
+echo "View logs:      tail -f logs/celery_*.log"
+echo "Test system:    python3 src/core/main.py --mode test"
+echo "SharePoint:     ./scripts/sharepoint_health_check.sh"
 echo ""
 echo "Session Management:"
 echo "──────────────────"
@@ -174,12 +175,59 @@ echo "Check session: ./scripts/telegram_session.sh status"
 echo "Test session:  ./scripts/telegram_session.sh test"
 echo "Renew session: ./scripts/telegram_session.sh renew"
 
+# SharePoint Health Check
+echo ""
+echo "SharePoint Integration Status:"
+echo "────────────────────────────"
+if [ -f "$LOG_DIR/sharepoint.log" ]; then
+    # Check recent successful operations
+    recent_success=$(grep "SharePoint response: status=200" "$LOG_DIR/sharepoint.log" | tail -5 | wc -l)
+    if [ "$recent_success" -gt 0 ]; then
+        echo "✓ SharePoint operations working (last $recent_success successful)"
+        latest_op=$(grep "SharePoint response: status=200" "$LOG_DIR/sharepoint.log" | tail -1 | cut -d']' -f1 | tr -d '[')
+        if [ -n "$latest_op" ]; then
+            echo "  💾 Last successful operation: $latest_op"
+        fi
+    else
+        echo "⚠️  No recent successful SharePoint operations"
+    fi
+    
+    # Check for recent errors
+    recent_errors=$(grep -i "error\|failed" "$LOG_DIR/sharepoint.log" | tail -3)
+    if [ -n "$recent_errors" ]; then
+        echo "  ⚠️  Recent SharePoint issues detected:"
+        echo "$recent_errors" | sed 's/^/    /'
+    fi
+    
+    # Check Teams notifications for SharePoint crashes
+    if [ -f "$LOG_DIR/teams.log" ]; then
+        sharepoint_crashes=$(grep "SharePointInitializationError" "$LOG_DIR/teams.log" | tail -1)
+        if [ -n "$sharepoint_crashes" ]; then
+            crash_time=$(echo "$sharepoint_crashes" | cut -d']' -f1 | tr -d '[')
+            echo "  🚨 Last SharePoint crash alert: $crash_time"
+            echo "  💡 Check: tail -20 logs/sharepoint.log"
+        fi
+    fi
+else
+    echo "✗ No SharePoint log file found"
+fi
+
 # Show recent errors if any
 echo ""
-echo "Recent Errors (last 10 lines):"
-echo "─────────────────────────────"
+echo "Recent System Errors (last 10 lines):"
+echo "────────────────────────────────────"
 if [ -f "$LOG_DIR/main.log" ]; then
     tail -10 "$LOG_DIR/main.log" | grep -i error || echo "No recent errors in main.log"
 else
     echo "No main.log file found"
 fi
+
+# SharePoint troubleshooting commands
+echo ""
+echo "SharePoint Troubleshooting:"
+echo "─────────────────────────"
+echo "View SharePoint log:    tail -20 logs/sharepoint.log"
+echo "Monitor operations:     tail -f logs/sharepoint.log"
+echo "Check crash alerts:     grep 'SharePointInitializationError' logs/teams.log"
+echo "Test SharePoint:        ./scripts/run_tests.sh --sharepoint"
+echo "Restart data services:  ./scripts/deploy_celery.sh restart data_services"

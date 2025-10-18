@@ -295,7 +295,7 @@ def send_teams_notification(self, message_data, config, country_code):
         raise self.retry(exc=e)
 
 
-@celery.task(bind=True, retry_kwargs={'max_retries': 3, 'countdown': 45})
+@celery.task(bind=True, retry_kwargs={'max_retries': 5, 'countdown': 180})
 def save_to_sharepoint(self, message_data, config, country_code):
     """Save to country-specific SharePoint file - handles both significant and trivial messages"""
     try:
@@ -303,7 +303,7 @@ def save_to_sharepoint(self, message_data, config, country_code):
         is_significant = message_data.get('is_significant', False)
         category = "Significant" if is_significant else "Trivial"
         
-        LOGGER.writeLog(f"Saving {category} message {message_id} to SharePoint ({country_code})")
+        LOGGER.writeLog(f"Saving {category} message {message_id} to SharePoint ({country_code}) - Attempt {self.request.retries + 1}")
         
         # Get country-specific SharePoint configuration
         countries = config.get('COUNTRIES', {})
@@ -326,20 +326,53 @@ def save_to_sharepoint(self, message_data, config, country_code):
         file_name = sharepoint_config.get('file_name', f'{country_code}_Telegram_Feed.xlsx')
         full_file_path = f"{folder_path}{file_name}"
         
-        # Initialize SharePoint processor
-        sp_processor = SharepointProcessor(
-            sp_config['ClientID'], 
-            sp_config['ClientSecret'],
-            sp_config['TenantID'],
-            sp_config['SharepointSite'],
-            site_name,
-            full_file_path
-        )
+        # Enhanced SharePoint processor initialization with retry logic
+        sp_processor = None
+        max_init_attempts = 3
+        
+        for attempt in range(max_init_attempts):
+            try:
+                LOGGER.writeLog(f"Initializing SharePoint processor - attempt {attempt + 1}/{max_init_attempts}")
+                
+                sp_processor = SharepointProcessor(
+                    sp_config['ClientID'], 
+                    sp_config['ClientSecret'],
+                    sp_config['TenantID'],
+                    sp_config['SharepointSite'],
+                    site_name,
+                    full_file_path
+                )
+                
+                # Enhanced session validation
+                if (sp_processor and 
+                    hasattr(sp_processor, 'sessionID') and 
+                    sp_processor.sessionID and 
+                    hasattr(sp_processor, 'token') and 
+                    sp_processor.token and
+                    hasattr(sp_processor, 'siteID') and 
+                    sp_processor.siteID and
+                    hasattr(sp_processor, 'fileID') and 
+                    sp_processor.fileID):
+                    
+                    LOGGER.writeLog(f"SharePoint processor initialized successfully on attempt {attempt + 1}")
+                    break
+                else:
+                    LOGGER.writeLog(f"SharePoint processor initialization incomplete on attempt {attempt + 1}")
+                    sp_processor = None
+                    
+            except Exception as init_error:
+                LOGGER.writeLog(f"SharePoint processor initialization failed on attempt {attempt + 1}: {init_error}")
+                sp_processor = None
+                
+            # Wait before retry (except on last attempt)
+            if attempt < max_init_attempts - 1:
+                import time
+                time.sleep(5)  # 5 second delay between initialization attempts
         
         if not sp_processor:
-            raise Exception("Failed to initialize SharePoint processor")
+            raise Exception("Failed to initialize SharePoint processor after multiple attempts")
             
-        # Check if we have valid session ID to confirm connection
+        # Additional session validation with connection test
         if not hasattr(sp_processor, 'sessionID') or not sp_processor.sessionID:
             raise Exception("Failed to establish SharePoint session")
         
@@ -395,6 +428,10 @@ def save_to_sharepoint(self, message_data, config, country_code):
         
         range_address = f"A{next_row}:{chr(ord('A') + len(sharepoint_fields) - 1)}{next_row}"
         
+        # Validate session one more time before attempting the update
+        if not sp_processor.validateSession():
+            raise Exception("SharePoint session became invalid before update")
+        
         # Only send the data row, not the headers (convertDictToSPFormat returns [headers, data])
         if len(sp_format_data) > 1:
             data_only = [sp_format_data[1]]  # Only the data row
@@ -403,13 +440,17 @@ def save_to_sharepoint(self, message_data, config, country_code):
         else:
             raise Exception("No data row found after SharePoint format conversion")
         
-        # Close the session
-        sp_processor.closeExcelSession()
+        # Always close the session in a try-catch to prevent this from causing task failure
+        try:
+            sp_processor.closeExcelSession()
+            LOGGER.writeLog("SharePoint session closed successfully")
+        except Exception as close_error:
+            LOGGER.writeLog(f"Warning: Failed to close SharePoint session: {close_error}")
         
         if success:
             LOGGER.writeLog(f"{category} message {message_id} saved to SharePoint sheet '{sheet_name}' successfully ({country_code})")
         else:
-            raise Exception("SharePoint update failed")
+            raise Exception("SharePoint update failed - data may not have been saved")
             
         return {
             "status": "success", 
@@ -421,8 +462,19 @@ def save_to_sharepoint(self, message_data, config, country_code):
         }
         
     except Exception as e:
-        LOGGER.writeLog(f"SharePoint save failed for message {message_data.get('id', 'unknown')}: {e}")
-        raise self.retry(exc=e)
+        # Ensure session cleanup even on failure
+        try:
+            if 'sp_processor' in locals() and sp_processor and hasattr(sp_processor, 'closeExcelSession'):
+                sp_processor.closeExcelSession()
+        except:
+            pass  # Ignore cleanup errors
+            
+        error_msg = f"SharePoint save failed for message {message_data.get('id', 'unknown')} (attempt {self.request.retries + 1}): {e}"
+        LOGGER.writeLog(error_msg)
+        
+        # Add exponential backoff for retries
+        retry_countdown = min(180 * (2 ** self.request.retries), 900)  # Max 15 minutes
+        raise self.retry(exc=e, countdown=retry_countdown)
 
 
 @celery.task(bind=True, retry_kwargs={'max_retries': 2, 'countdown': 10})

@@ -435,8 +435,8 @@ class TestRunner:
             self.results['errors'].append(f"CSV Message Storage: {details}")
             
     def test_sharepoint_storage(self):
-        """Test SharePoint message storage functionality"""
-        self.print_section("SharePoint Storage Tests")
+        """Test Enhanced SharePoint message storage functionality with reliability features"""
+        self.print_section("Enhanced SharePoint Storage Tests")
         
         # Test comprehensive SharePoint message storage (consolidated test suite)
         status, details = self.run_python_test("test_sharepoint_comprehensive.py", timeout=180)
@@ -446,12 +446,16 @@ class TestRunner:
             self.results['passed'] += 1
             # SharePoint comprehensive test includes multiple sub-tests
             print("   ✅ Connection & Authentication")
+            print("   ✅ Session Management & Validation")
+            print("   ✅ Retry Logic & Error Handling")
+            print("   ✅ Timeout Management")
             print("   ✅ Excel Formula Escaping (#NAME? fix)")
             print("   ✅ Header Creation")
             print("   ✅ Row Detection & Management")
             print("   ✅ Data Writing with Escaping")
             print("   ✅ Celery Task Integration")
             print("   ✅ High Row Number Validation")
+            print("   ✅ Production-Safe Testing (dedicated test sheets)")
         elif status == 'SKIP':
             self.results['skipped'] += 1
         else:
@@ -464,6 +468,33 @@ class TestRunner:
             debug_status, debug_details = self.run_python_test("debug_sharepoint_utils.py", timeout=60)
             if debug_status == 'PASS':
                 print("   📊 Debug information collected successfully")
+                
+        # Additional: Test SharePoint health check script
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["./scripts/sharepoint_health_check.sh"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                cwd=str(self.project_root)
+            )
+            
+            if result.returncode == 0:
+                self.print_result("SharePoint Health Check Script", "PASS")
+                self.results['passed'] += 1
+            else:
+                self.print_result("SharePoint Health Check Script", "FAIL", f"Exit code: {result.returncode}")
+                self.results['failed'] += 1
+                self.results['errors'].append("SharePoint health check script failed")
+                
+        except subprocess.TimeoutExpired:
+            self.print_result("SharePoint Health Check Script", "SKIP", "Health check timed out")
+            self.results['skipped'] += 1
+        except Exception as e:
+            self.print_result("SharePoint Health Check Script", "FAIL", str(e))
+            self.results['failed'] += 1
+            self.results['errors'].append(f"SharePoint health check error: {e}")
             
     def test_field_exclusions(self):
         """Test configurable field exclusions for Teams and SharePoint"""

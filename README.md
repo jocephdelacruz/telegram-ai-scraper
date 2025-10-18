@@ -19,6 +19,7 @@ An intelligent, high-performance Telegram message scraper that uses OpenAI to an
 - **Optimized Language Detection**: Reuses language detection from message analysis to avoid redundant API calls
 - **Teams Integration**: Sends formatted alerts to Microsoft Teams channels for significant messages
 - **SharePoint Storage**: Automatically stores all messages (significant and trivial) in SharePoint Excel files with translation info
+- **Enhanced SharePoint Reliability**: Advanced session management with validation, multi-attempt initialization, timeout handling, and exponential backoff retry logic
 - **Fault Tolerance**: Automatic task retries and error recovery with Celery
 - **Scalable Architecture**: Add more workers to handle increased message volume
 - **Robust Error Handling**: Comprehensive error catching and logging throughout the system
@@ -36,6 +37,35 @@ An intelligent, high-performance Telegram message scraper that uses OpenAI to an
 - OpenAI API key
 - Microsoft Teams webhook URL (optional)
 - SharePoint access credentials (optional)
+
+## SharePoint Integration Reliability
+
+The system features **enterprise-grade SharePoint reliability** with comprehensive error handling and session management to prevent data loss and service interruptions.
+
+### Enhanced Session Management
+- **Session Validation**: Automatic health checks before each operation
+- **Multi-Attempt Initialization**: Up to 3 attempts for session creation with exponential backoff
+- **Timeout Handling**: Configurable timeouts (30-45 seconds) for API calls
+- **Authentication Recovery**: Automatic token refresh and authentication retry logic
+- **Graceful Degradation**: Proper error handling with detailed logging for troubleshooting
+
+### Fault Tolerance Features
+- **Exponential Backoff**: Celery tasks retry with 180-second intervals and exponential delays
+- **Maximum Retry Logic**: Up to 5 attempts for transient failures
+- **Error Classification**: Different handling for authentication vs. network vs. service errors
+- **Session Cleanup**: Proper resource cleanup on failures to prevent resource leaks
+- **Comprehensive Logging**: Detailed logging of all SharePoint operations for monitoring
+
+### Data Integrity Protection
+- **Atomic Operations**: Each Excel update is atomic to prevent partial writes
+- **Error Recovery**: Failed operations trigger admin notifications without data loss
+- **Backup Integration**: CSV backups ensure no data is lost during SharePoint outages
+- **Health Monitoring**: Continuous monitoring with Teams notifications for issues
+
+### Performance Optimization
+- **Connection Reuse**: Efficient session management reduces API call overhead
+- **Batch Operations**: Optimized for handling high-volume message processing
+- **Resource Management**: Proper cleanup prevents memory leaks in long-running processes
 
 ## Installation
 
@@ -599,7 +629,7 @@ chmod +x scripts/quick_start.sh
 | `./scripts/run_tests.sh --language` | Language detection tests | Test heuristic detection | Arabic/English detection without OpenAI calls |
 | `./scripts/run_tests.sh --processing` | Message processing tests | Test dual-language logic | Iraq keyword matching, AI toggle, translation |
 | `./scripts/run_tests.sh --csv` | **CSV storage tests** | Test CSV storage pipeline | **PRODUCTION SAFE**: Uses dedicated test CSV files (`TEST_iraq_*.csv`), complete validation, automatic cleanup |
-| `./scripts/run_tests.sh --sharepoint` | **SharePoint storage tests** | Test SharePoint integration | **PRODUCTION SAFE**: Uses dedicated test sheets, Excel formula escaping (#NAME? fix), comprehensive integration testing |
+| `./scripts/run_tests.sh --sharepoint` | **Enhanced SharePoint storage tests** | Test SharePoint integration with reliability features | **PRODUCTION SAFE**: Uses dedicated test sheets, tests session management, retry logic, timeout handling, Excel formula escaping (#NAME? fix), comprehensive integration testing |
 | `python3 tests/test_ai_exception_filtering.py` | **🤖 AI Exception Filtering tests** | Test AI exception rules | Tests message classification with geographic relevance filtering, exception rule validation |
 
 #### Legacy Testing & Validation Tools  
@@ -994,23 +1024,68 @@ celery -A src.tasks.telegram_celery_tasks worker --queues=notifications --concur
    - Check Teams channel permissions
    - Test webhook with a simple curl command
 
-7. **SharePoint Connection Issues**
-   - Verify client credentials
-   - Check SharePoint site and file permissions
-   - Ensure Excel file exists and is accessible
+7. **SharePoint Connection Issues & Service Crashes**
+   - **Symptoms**: Teams alerts showing "SharePointInitializationError", Excel files not updating
+   - **Root Causes**: Session management failures, authentication token expiration, network timeouts
+   - **Immediate Actions**: 
+     - Check `logs/sharepoint.log` for detailed error information
+     - Verify client credentials in `config.json`
+     - Ensure SharePoint site and Excel file permissions are correct
+     - Check network connectivity to Microsoft Graph API endpoints
+   - **Enhanced Troubleshooting**: 
+     - Monitor `logs/teams.log` for crash notifications
+     - Look for "SharePointInitializationError" patterns in admin Teams channel
+     - Check Celery data services log: `logs/celery_data_services.log`
+   - **Recovery Procedures**:
+     - System automatically retries with exponential backoff (up to 5 attempts)
+     - Failed tasks send admin notifications without data loss
+     - Manual recovery: Restart data services worker: `./scripts/deploy_celery.sh restart data_services`
+     - If authentication issues persist: Update SharePoint credentials and restart system
 
 8. **High Memory Usage**
    - Reduce worker concurrency levels
    - Implement task result expiration
    - Monitor with `htop` or similar tools
 
+### SharePoint Health Monitoring
+
+**Quick SharePoint Status Check:**
+```bash
+# Check recent SharePoint operations
+tail -20 logs/sharepoint.log
+
+# Look for successful operations (should show status=200)
+grep "SharePoint response: status=200" logs/sharepoint.log | tail -5
+
+# Check for SharePoint errors in Teams notifications
+grep "SharePointInitializationError" logs/teams.log | tail -5
+
+# Monitor Celery data services (handles SharePoint tasks)
+tail -10 logs/celery_data_services.log
+```
+
+**SharePoint Service Recovery:**
+```bash
+# If SharePoint is failing, restart data services worker
+./scripts/deploy_celery.sh stop
+./scripts/deploy_celery.sh start
+
+# Check system status after restart
+./scripts/status.sh
+
+# Verify SharePoint is working by checking logs
+tail -f logs/sharepoint.log  # Watch for new operations
+```
+
 ### Getting Help
 
-1. Check the log files in the `logs/` directory
-2. Run in test mode to verify connections: `python3 src/core/main.py --config config/config.json --mode test`
-3. Monitor Celery workers: `celery -A src.tasks.telegram_celery_tasks inspect stats`
-4. View task results: `celery -A src.tasks.telegram_celery_tasks result <task_id>`
-5. Use the management scripts: `./scripts/status.sh` or `./scripts/deploy_celery.sh status`
+1. **SharePoint Issues**: Check `logs/sharepoint.log` and `logs/teams.log` for crash notifications
+2. **General System**: Check the log files in the `logs/` directory
+3. **Connection Testing**: Run in test mode: `python3 src/core/main.py --config config/config.json --mode test`
+4. **Worker Monitoring**: Monitor Celery workers: `celery -A src.tasks.telegram_celery_tasks inspect stats`
+5. **Task Results**: View task results: `celery -A src.tasks.telegram_celery_tasks result <task_id>`
+6. **Status Checks**: Use management scripts: `./scripts/status.sh` or `./scripts/deploy_celery.sh status`
+7. **SharePoint Testing**: Run SharePoint-specific tests: `./scripts/run_tests.sh --sharepoint`
 
 ## Documentation
 
@@ -1025,6 +1100,16 @@ This guide covers:
 - Configuration examples for Philippines, Singapore, and Malaysia
 - Migration guide from single-country setups
 - Performance benefits and troubleshooting
+
+🔗 **[SharePoint Integration Reliability Guide](docs/SHAREPOINT_RELIABILITY_GUIDE.md)**
+
+Comprehensive guide for SharePoint reliability features:
+- Enhanced session management and validation
+- Retry logic with exponential backoff
+- Timeout handling and error recovery
+- Health monitoring and troubleshooting procedures
+- Best practices for enterprise-grade stability
+- Recovery procedures and maintenance schedules
 
 🤖 **[AI Exception Filtering Guide](docs/AI_EXCEPTION_FILTERING_GUIDE.md)**
 
@@ -1209,7 +1294,17 @@ This project is for internal use only. All rights reserved.
 
 ## Changelog
 
-### Version 2.2.0 (Current)
+### Version 2.3.0 (Current) - SharePoint Reliability Enhancement
+- **🔗 Enhanced SharePoint Reliability**: Enterprise-grade session management and error handling
+- **Session Validation**: Multi-attempt initialization with health checks and timeout handling
+- **Advanced Retry Logic**: Exponential backoff with up to 5 attempts for transient failures
+- **Comprehensive Error Handling**: Authentication recovery, network timeout management, and graceful degradation
+- **Improved Monitoring**: Detailed logging, health checks, and proactive issue detection
+- **Admin Notifications**: Real-time Teams alerts for SharePoint issues with detailed error context
+- **Documentation**: Complete SharePoint Reliability Guide with troubleshooting and best practices
+- **Enhanced Testing**: Production-safe SharePoint testing with dedicated test sheets
+
+### Version 2.2.0
 - **🚀 Efficient Message Fetching System**: Redis-based tracking with CSV fallback - **80-95% reduction in API calls**
 - **Smart ID Tracking**: Only fetches messages newer than last processed ID per channel
 - **Triple Fallback Strategy**: Redis → CSV analysis → Conservative original method

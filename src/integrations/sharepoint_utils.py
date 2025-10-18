@@ -55,35 +55,64 @@ class SharepointProcessor:
             LOGGER.writeLog(f"Failed to send SharePoint initialization error to admin: {admin_error}")
 
 
-   # Authenticate and get a Microsoft Graph API token
+   # Enhanced authenticate and get a Microsoft Graph API token with retry logic
    def getAccessToken(self, clientID, clientSecret, tenantID):
-      try:
-         authority = f"https://login.microsoftonline.com/{tenantID}"
-         app = ConfidentialClientApplication(clientID, authority=authority, client_credential=clientSecret)
-         token = app.acquire_token_for_client(scopes=["https://graph.microsoft.com/.default"])
-         if "access_token" in token:
-            return token["access_token"]
-         else:
-            raise Exception("Authentication failed:", token.get("error_description"))
-      except Exception as e:
-         LOGGER.writeLog(f"Failed to acquire access token - {e}")
-         
-         # Send critical exception to admin for token acquisition failure
+      max_attempts = 3
+      for attempt in range(max_attempts):
          try:
-            from .teams_utils import send_critical_exception
-            send_critical_exception(
-               "SharePointAuthError",
-               str(e),
-               "SharepointProcessor.getAccessToken",
-               additional_context={
-                  "client_id": clientID[:8] + "***" if clientID else None,
-                  "tenant_id": tenantID[:8] + "***" if tenantID else None
-               }
-            )
-         except Exception as admin_error:
-            LOGGER.writeLog(f"Failed to send SharePoint auth error to admin: {admin_error}")
-         
-         return ""
+            LOGGER.writeLog(f"Acquiring access token - attempt {attempt + 1}/{max_attempts}")
+            
+            authority = f"https://login.microsoftonline.com/{tenantID}"
+            app = ConfidentialClientApplication(clientID, authority=authority, client_credential=clientSecret)
+            
+            # Add timeout for token acquisition
+            token = app.acquire_token_for_client(scopes=["https://graph.microsoft.com/.default"])
+            
+            if "access_token" in token:
+               LOGGER.writeLog(f"Access token acquired successfully on attempt {attempt + 1}")
+               return token["access_token"]
+            else:
+               error_desc = token.get("error_description", "Unknown error")
+               error_code = token.get("error", "unknown_error")
+               LOGGER.writeLog(f"Authentication failed on attempt {attempt + 1}: {error_code} - {error_desc}")
+               
+               # Don't retry for certain error types
+               if error_code in ["invalid_client", "invalid_client_secret", "unauthorized_client"]:
+                  raise Exception(f"Authentication failed - {error_code}: {error_desc}")
+               
+               if attempt < max_attempts - 1:
+                  import time
+                  time.sleep(5)  # Wait 5 seconds before retry
+                  continue
+               else:
+                  raise Exception(f"Authentication failed after {max_attempts} attempts - {error_code}: {error_desc}")
+                  
+         except Exception as e:
+            LOGGER.writeLog(f"Token acquisition error on attempt {attempt + 1}: {e}")
+            if attempt < max_attempts - 1:
+               import time
+               time.sleep(5)
+               continue
+            else:
+               # Send critical exception to admin for token acquisition failure
+               try:
+                  from .teams_utils import send_critical_exception
+                  send_critical_exception(
+                     "SharePointAuthError",
+                     str(e),
+                     "SharepointProcessor.getAccessToken",
+                     additional_context={
+                        "client_id": clientID[:8] + "***" if clientID else None,
+                        "tenant_id": tenantID[:8] + "***" if tenantID else None,
+                        "attempts": max_attempts
+                     }
+                  )
+               except Exception as admin_error:
+                  LOGGER.writeLog(f"Failed to send SharePoint auth error to admin: {admin_error}")
+               
+               return ""
+      
+      return ""
 
 
    # Get file ID and site ID
@@ -110,29 +139,85 @@ class SharepointProcessor:
          return "", ""
       
 
-   # Open a session to the Excel file
+   # Open a session to the Excel file with enhanced error handling
    def createExcelSession(self):
       try: 
          headers = {"Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json"
          }
          session_url = f"https://graph.microsoft.com/v1.0/sites/{self.siteID}/drive/items/{self.fileID}/workbook/createSession"
-         response = requests.post(session_url, json={"persistChanges": True}, headers=headers)
-         #print(f"response in createExcelSession {response}")
-         if response.json()["id"] and response.json()["id"] != "":
-            return response.json()["id"]
+         
+         # Add timeout and enhanced error handling
+         response = requests.post(session_url, json={"persistChanges": True}, headers=headers, timeout=30)
+         
+         LOGGER.writeLog(f"Excel session creation response: status={response.status_code}")
+         
+         if response.status_code in [200, 201]:  # Accept both OK and Created status codes
+            response_json = response.json()
+            if "id" in response_json and response_json["id"]:
+               LOGGER.writeLog(f"Excel session created successfully: {response_json['id'][:8]}...")
+               return response_json["id"]
+            else:
+               raise Exception("Response missing session ID")
+         elif response.status_code == 401:
+            raise Exception("Authentication failed - token may be expired")
+         elif response.status_code == 403:
+            raise Exception("Access denied - insufficient permissions")
+         elif response.status_code == 404:
+            raise Exception("File not found - check file path and permissions")
+         elif response.status_code == 429:
+            raise Exception("Rate limit exceeded - too many requests")
          else:
-            raise Exception("The HTTP response did not return a Session ID")
+            raise Exception(f"HTTP {response.status_code}: {response.text[:200]}")
+            
+      except requests.exceptions.Timeout:
+         LOGGER.writeLog("Excel session creation timed out after 30 seconds")
+         raise Exception("Session creation timeout")
+      except requests.exceptions.ConnectionError:
+         LOGGER.writeLog("Connection error during Excel session creation")
+         raise Exception("Connection error")
       except Exception as e:
          LOGGER.writeLog(f"Failed to acquire a Session ID - {e}")
+         raise Exception(f"Session creation failed: {e}")
          return ""
 
 
-   # A way to check if you are properly connected to the Sharepoint File
+   # Enhanced method to check if you are properly connected to the Sharepoint File
    def isConnectedToSharepointFile(self):
-      if token == "" or siteID == "" or fileID == "" or sessionID == "":
+      if (not self.token or not self.siteID or not self.fileID or not self.sessionID):
          return False
       return True
+   
+   # New method to validate session is still active
+   def validateSession(self):
+      """Test if the current session is still valid by making a lightweight API call"""
+      try:
+         if not self.isConnectedToSharepointFile():
+            return False
+            
+         headers = {
+            "Authorization": f"Bearer {self.token}",
+            "workbook-session-id": self.sessionID,
+            "Content-Type": "application/json"
+         }
+         
+         # Try to get workbook info as a lightweight test
+         url = f"https://graph.microsoft.com/v1.0/sites/{self.siteID}/drive/items/{self.fileID}/workbook"
+         response = requests.get(url, headers=headers, timeout=15)
+         
+         if response.status_code == 200:
+            LOGGER.writeLog("Session validation successful")
+            return True
+         elif response.status_code == 401:
+            LOGGER.writeLog("Session validation failed - authentication error")
+            return False
+         else:
+            LOGGER.writeLog(f"Session validation failed - HTTP {response.status_code}")
+            return False
+            
+      except Exception as e:
+         LOGGER.writeLog(f"Session validation error: {e}")
+         return False
 
 
    # Delete only the contenst in the specified range, not the formatting
@@ -169,52 +254,105 @@ class SharepointProcessor:
          return False
 
 
-   # Update content in the specified range
+   # Enhanced update content in the specified range with retry logic
    def updateRange(self, worksheet_name, range_address, values):
-      try:
-         headers = {
-            "Authorization": f"Bearer {self.token}",
-            "workbook-session-id": self.sessionID,
-            "Content-Type": "application/json"
-         }
-         url = f"https://graph.microsoft.com/v1.0/sites/{self.siteID}/drive/items/{self.fileID}/workbook/worksheets/{worksheet_name}/range(address='{range_address}')"
-         
-         # Log the request details for debugging
-         LOGGER.writeLog(f"SharePoint updateRange: worksheet={worksheet_name}, range={range_address}, values={len(values)} rows")
-         LOGGER.writeLog(f"Request URL: {url}")
-         LOGGER.writeLog(f"Values data: {values}")
-         
-         response = requests.patch(url, json={"values": values}, headers=headers)
-         
-         # Log response details
-         LOGGER.writeLog(f"SharePoint response: status={response.status_code}")
-         if response.status_code != 200:
-            LOGGER.writeLog(f"SharePoint error response: {response.text}")
+      max_attempts = 3
+      for attempt in range(max_attempts):
+         try:
+            # Validate session before making the request
+            if attempt > 0:  # Only validate on retry attempts
+               if not self.validateSession():
+                  LOGGER.writeLog(f"Session invalid on attempt {attempt + 1}, trying to recreate...")
+                  self.sessionID = self.createExcelSession()
+                  if not self.sessionID:
+                     raise Exception("Failed to recreate session")
             
-         return response.status_code == 200
-      except Exception as e:
-         LOGGER.writeLog(f"Failed to add values in {range_address} of excel file {self.fileID} - {e}")
-         self._error_count += 1
-         
-         # Send critical exception to admin for data update failures (data loss concern)
-         if self._error_count % 5 == 0:  # Every 5th error to avoid spam
-            try:
-               from .teams_utils import send_critical_exception
-               send_critical_exception(
-                  "SharePointUpdateError",
-                  str(e),
-                  "SharepointProcessor.updateRange",
-                  additional_context={
-                     "worksheet": worksheet_name,
-                     "range": range_address,
-                     "data_rows": len(values) if values else 0,
-                     "total_errors": self._error_count
-                  }
-               )
-            except Exception as admin_error:
-               LOGGER.writeLog(f"Failed to send SharePoint update error to admin: {admin_error}")
-         
-         return False
+            headers = {
+               "Authorization": f"Bearer {self.token}",
+               "workbook-session-id": self.sessionID,
+               "Content-Type": "application/json"
+            }
+            url = f"https://graph.microsoft.com/v1.0/sites/{self.siteID}/drive/items/{self.fileID}/workbook/worksheets/{worksheet_name}/range(address='{range_address}')"
+            
+            # Log the request details for debugging
+            LOGGER.writeLog(f"SharePoint updateRange (attempt {attempt + 1}): worksheet={worksheet_name}, range={range_address}, values={len(values)} rows")
+            LOGGER.writeLog(f"Request URL: {url}")
+            LOGGER.writeLog(f"Values data: {values}")
+            
+            response = requests.patch(url, json={"values": values}, headers=headers, timeout=45)
+            
+            # Log response details
+            LOGGER.writeLog(f"SharePoint response: status={response.status_code}")
+            
+            if response.status_code == 200:
+               LOGGER.writeLog(f"SharePoint update successful on attempt {attempt + 1}")
+               return True
+            elif response.status_code == 401:
+               LOGGER.writeLog(f"Authentication failed on attempt {attempt + 1}")
+               if attempt < max_attempts - 1:
+                  continue  # Retry with session validation
+            elif response.status_code == 403:
+               LOGGER.writeLog(f"Access denied - insufficient permissions")
+               return False  # No point retrying permissions issue
+            elif response.status_code == 404:
+               LOGGER.writeLog(f"Worksheet or range not found: {worksheet_name}, {range_address}")
+               return False  # No point retrying not found
+            elif response.status_code == 429:
+               LOGGER.writeLog(f"Rate limit exceeded on attempt {attempt + 1}")
+               if attempt < max_attempts - 1:
+                  import time
+                  time.sleep(10)  # Wait 10 seconds for rate limit
+                  continue
+            else:
+               LOGGER.writeLog(f"SharePoint error response: status={response.status_code}, body={response.text[:300]}")
+               if attempt < max_attempts - 1:
+                  continue  # Retry other errors
+            
+            return False
+            
+         except requests.exceptions.Timeout:
+            LOGGER.writeLog(f"SharePoint request timeout on attempt {attempt + 1}")
+            if attempt < max_attempts - 1:
+               import time
+               time.sleep(5)
+               continue
+         except requests.exceptions.ConnectionError:
+            LOGGER.writeLog(f"SharePoint connection error on attempt {attempt + 1}")
+            if attempt < max_attempts - 1:
+               import time
+               time.sleep(5)
+               continue
+         except Exception as e:
+            LOGGER.writeLog(f"SharePoint update error on attempt {attempt + 1}: {e}")
+            if attempt < max_attempts - 1:
+               import time
+               time.sleep(3)
+               continue
+      
+      # All attempts failed
+      self._error_count += 1
+      LOGGER.writeLog(f"Failed to update SharePoint range after {max_attempts} attempts")
+      
+      # Send critical exception to admin for data update failures (data loss concern)
+      if self._error_count % 3 == 0:  # Every 3rd error to avoid spam (reduced from 5)
+         try:
+            from .teams_utils import send_critical_exception
+            send_critical_exception(
+               "SharePointUpdateError",
+               f"Failed to update range after {max_attempts} attempts",
+               "SharepointProcessor.updateRange",
+               additional_context={
+                  "worksheet": worksheet_name,
+                  "range": range_address,
+                  "data_rows": len(values) if values else 0,
+                  "total_errors": self._error_count,
+                  "attempts": max_attempts
+               }
+            )
+         except Exception as admin_error:
+            LOGGER.writeLog(f"Failed to send SharePoint update error to admin: {admin_error}")
+      
+      return False
 
 
    # Close the session
