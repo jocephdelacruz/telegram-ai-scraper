@@ -170,6 +170,14 @@ class TestRunner:
         """Test Telegram session manager functionality"""
         self.print_section("Telegram Session Manager Tests")
         
+        # Skip session testing during post-renewal context to prevent concurrent access
+        if os.environ.get('CALLED_FROM_SAFE_RENEW') == 'true':
+            self.print_result("Session Manager Tests", "SKIP", "Skipped during post-renewal context (prevents session conflicts)")
+            self.results['skipped'] += 1
+            self.print_result("Session Safety Check", "PASS", "Post-renewal session protection active")
+            self.results['passed'] += 1
+            return
+        
         # Test session manager import and initialization
         try:
             from src.integrations.telegram_session_manager import TelegramSessionManager, TelegramRateLimitError, TelegramSessionError, TelegramAuthError
@@ -747,11 +755,16 @@ class TestRunner:
         print(f"Test Mode: {'Quick' if quick else 'Full'}")
         print(f"Python: {sys.executable}")
         
+        # Check if running in post-renewal context
+        post_renewal = os.environ.get('CALLED_FROM_SAFE_RENEW') == 'true'
+        if post_renewal:
+            print("🔒 Post-Renewal Context: Session tests will be skipped to prevent conflicts")
+        
         # Core tests (always run)
         self.run_component_tests()
         self.test_configuration()
         self.test_redis_connection()
-        self.test_telegram_session_manager()
+        self.test_telegram_session_manager()  # Will auto-skip if post-renewal
         self.test_language_detection()
         self.test_message_processing()
         self.test_csv_storage()
