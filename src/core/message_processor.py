@@ -281,29 +281,29 @@ class MessageProcessor:
                 LOGGER.writeLog(f'MessageProcessor: Message classified as Significant by keywords (English): {matched_significant}')
                 LOGGER.writeLog(f'MessageProcessor: Native keywords that matched: {matched_significant_native}')
                 
-                # Enhanced filtering: Check exception rules if enabled
+                # Enhanced filtering: Check additional criteria if enabled
                 use_enhanced_filtering = False
-                exception_rules = []
+                additional_criteria = []
                 if country_config and 'message_filtering' in country_config:
                     filtering = country_config['message_filtering']
                     use_enhanced_filtering = filtering.get('use_ai_for_enhanced_filtering', False)
-                    exception_rules = filtering.get('ai_exception_rules', [])
+                    additional_criteria = filtering.get('additional_ai_criteria', [])
                 
-                if use_enhanced_filtering and exception_rules and self.openai_processor:
-                    LOGGER.writeLog(f'MessageProcessor: Performing enhanced filtering with {len(exception_rules)} exception rules')
+                if use_enhanced_filtering and additional_criteria and self.openai_processor:
+                    LOGGER.writeLog(f'MessageProcessor: Performing enhanced filtering with {len(additional_criteria)} additional criteria')
                     try:
-                        matches_exception, matched_rule, reason = self.openai_processor._checkExceptionRules(
-                            message, exception_rules, country_config
+                        meets_criteria, failed_criteria, reason = self.openai_processor._checkAdditionalCriteria(
+                            message, additional_criteria, country_config
                         )
                         
-                        if matches_exception:
-                            LOGGER.writeLog(f'MessageProcessor: Significant message excluded by exception rule: {matched_rule}')
-                            return False, [], f"excluded_by_exception_rule_{reason}", translation_info
+                        if not meets_criteria:
+                            LOGGER.writeLog(f'MessageProcessor: Significant message failed additional criteria: {failed_criteria}')
+                            return False, [], f"failed_additional_criteria_{reason}", translation_info
                         else:
-                            LOGGER.writeLog(f'MessageProcessor: Message passed enhanced filtering - no exceptions apply')
+                            LOGGER.writeLog(f'MessageProcessor: Message passed enhanced filtering - meets all additional criteria')
                     except Exception as e:
                         LOGGER.writeLog(f'MessageProcessor: Enhanced filtering failed, proceeding with original classification: {e}')
-                        # Continue with original classification if exception checking fails
+                        # Continue with original classification if criteria checking fails
                 
                 return True, matched_significant, "the list of SIGNIFICANT keywords", translation_info
 
