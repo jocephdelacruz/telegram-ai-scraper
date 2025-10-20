@@ -683,29 +683,6 @@ class TestRunner:
         """Run extended test suite (optional tests that may require setup)"""
         self.print_section("Extended Tests (Optional)")
         
-        # Test efficient fetching system
-        status, details = self.run_python_test("test_efficient_fetching.py", timeout=90)
-        if status == 'FAIL' and ("authentication" in details.lower() or "session" in details.lower()):
-            status = 'SKIP'
-            details = "Requires Telegram authentication"
-            
-        self.print_result("Efficient Fetching System", status, details if status not in ['PASS', 'SKIP'] else None)
-        
-        if status == 'PASS':
-            self.results['passed'] += 1
-            # Efficient fetching test includes multiple components
-            print("   ✅ Redis Operations (Connection, Set/Get, Duplicate Detection)")
-            print("   ✅ CSV Fallback Mechanism (File Reading, ID Extraction)")
-            print("   ✅ Full Integration Test (Redis + CSV + Original Method)")
-            print("   ✅ Message Age Limit Enforcement (4-hour cutoff)")
-            print("   ✅ API Call Optimization (80-95% reduction achieved)")
-        elif status == 'SKIP':
-            self.results['skipped'] += 1
-        else:
-            self.results['failed'] += 1
-            if status != 'SKIP':
-                self.results['errors'].append(f"Efficient Fetching System: {details}")
-        
         # Test message fetch (might require Telegram auth)
         status, details = self.run_python_test("test_message_fetch.py", timeout=30)
         if status == 'FAIL' and ("authentication" in details.lower() or "session" in details.lower()):
@@ -806,7 +783,6 @@ def main():
     parser.add_argument("--field-exclusions", action="store_true", help="Run only field exclusions tests")
     parser.add_argument("--admin-teams", action="store_true", help="Run only Admin Teams connection tests")
     parser.add_argument("--telegram-session", action="store_true", help="Run enhanced Telegram session management tests")
-    parser.add_argument("--efficient-fetching", action="store_true", help="Run only efficient message fetching system tests")
     
     args = parser.parse_args()
     
@@ -853,23 +829,6 @@ def main():
         return runner.generate_report()
     elif args.telegram_session:
         runner.test_telegram_session_manager()
-        return runner.generate_report()
-    elif args.efficient_fetching:
-        runner.print_section("Efficient Fetching System Tests")
-        status, details = runner.run_python_test("test_efficient_fetching.py", timeout=90)
-        runner.print_result("Efficient Fetching System", status, details if status != 'PASS' else None)
-        if status == 'PASS':
-            runner.results['passed'] += 1
-            print("   ✅ Redis Operations (Connection, Set/Get, Duplicate Detection)")
-            print("   ✅ CSV Fallback Mechanism (File Reading, ID Extraction)")
-            print("   ✅ Full Integration Test (Redis + CSV + Original Method)")
-            print("   ✅ Message Age Limit Enforcement (4-hour cutoff)")
-            print("   ✅ API Call Optimization (80-95% reduction achieved)")
-        elif status == 'SKIP':
-            runner.results['skipped'] += 1
-        else:
-            runner.results['failed'] += 1
-            runner.results['errors'].append(f"Efficient Fetching System: {details}")
         return runner.generate_report()
     else:
         return runner.run_all(quick=args.quick)

@@ -550,20 +550,32 @@ def cleanup_old_tasks():
 @celery.task(bind=True, retry_kwargs={'max_retries': 3, 'countdown': 60})
 def fetch_new_messages_from_all_channels(self):
     """
-    Efficient periodic task to fetch new messages from all configured channels
-    
-    This task now uses an optimized approach that:
-    1. Uses Redis to track the last processed message ID per channel
-    2. Falls back to CSV files when Redis is unavailable  
-    3. Only fetches messages newer than the last processed ID
-    4. Respects a 4-hour absolute maximum message age
-    5. Minimizes Telegram API calls to avoid rate limiting
-    6. Falls back to the original method if tracking fails
-    
-    This dramatically reduces the number of messages fetched and processed,
-    improving performance and reducing the chance of hitting rate limits.
+    Periodic task to fetch new messages from all configured channels
+    This runs based on configurable interval and only fetches messages newer than the configured age limit
+    CRITICAL: This task now includes session safety protection to prevent concurrent
+    Telegram session access that can cause phone logout issues.
     """
     try:
+        # 🛡️ CRITICAL SESSION SAFETY CHECK - Prevent concurrent access that causes phone logout
+        from src.integrations.session_safety import SessionSafetyManager, SessionSafetyError
+        
+        safety_manager = SessionSafetyManager()
+        try:
+            safety_manager.check_session_safety("periodic_fetch")
+            LOGGER.writeLog("✅ Session safety check passed - safe to start periodic fetch")
+        except SessionSafetyError as safety_error:
+            # Multiple workers trying to access session - abort this attempt
+            LOGGER.writeLog(f"🛡️ SESSION SAFETY ABORT: {safety_error}")
+            LOGGER.writeLog("⏸️  Skipping this periodic fetch to prevent phone logout")
+            return {
+                "status": "skipped_for_safety",
+                "timestamp": datetime.now().isoformat(),
+                "reason": "Session safety protection active - prevented concurrent access",
+                "channels_checked": 0,
+                "messages_processed": 0,
+                "messages_skipped": 0
+            }
+        
         LOGGER.writeLog("Starting periodic message fetch from all channels")
         
         # Load configuration
@@ -590,15 +602,18 @@ def fetch_new_messages_from_all_channels(self):
         message_limit = telegram_config.get('FETCH_MESSAGE_LIMIT', 10)
         fetch_interval_seconds = telegram_config.get('FETCH_INTERVAL_SECONDS', 240)
         
-        LOGGER.writeLog(f"🚀 Using EFFICIENT tracking-based fetching (Redis + CSV fallback)")
-        LOGGER.writeLog(f"📊 Config: message_limit={message_limit} (fallback only), fetch_interval={fetch_interval_seconds}s")
-        LOGGER.writeLog(f"⏰ Maximum message age: 4 hours (absolute limit)")
+        # Calculate age limit based on fetch interval to minimize duplicates while ensuring no missed messages
+        # Use fetch interval + 30 seconds buffer to account for processing delays
+        age_limit_seconds = fetch_interval_seconds + 30
+        age_limit_minutes = age_limit_seconds / 60.0
         
-        # Calculate cutoff time for fallback compatibility (use UTC to match Telegram message timestamps)
+        LOGGER.writeLog(f"Using fetch limit: {message_limit}, fetch interval: {fetch_interval_seconds}s, age limit: {age_limit_seconds}s ({age_limit_minutes:.1f} minutes)")
+
+        # Calculate cutoff time for message age filtering (use UTC to match Telegram message timestamps)
         from datetime import timedelta, timezone
         age_limit_seconds = fetch_interval_seconds + 30  # Buffer for processing delays
         cutoff_time = datetime.now(timezone.utc) - timedelta(seconds=age_limit_seconds)
-        LOGGER.writeLog(f"📅 Fallback cutoff time: {cutoff_time.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+        LOGGER.writeLog(f"Only processing messages newer than: {cutoff_time.strftime('%Y-%m-%d %H:%M:%S')} UTC")
         
         # Get all channels from all countries
         all_channels = []
@@ -616,10 +631,20 @@ def fetch_new_messages_from_all_channels(self):
             LOGGER.writeLog("No channels configured for message fetching")
             return {"status": "no_channels", "timestamp": datetime.now().isoformat()}
         
-        # Initialize Telegram scraper
+        # Initialize Telegram scraper with additional session safety
         if not all(key in telegram_config for key in ['API_ID', 'API_HASH', 'PHONE_NUMBER']):
             raise Exception("Telegram configuration incomplete")
         
+        # 🛡️ Additional safety check before creating scraper (double protection)
+        LOGGER.writeLog("🔐 Performing final session safety verification before Telegram client creation")
+        safety_manager = SessionSafetyManager()
+        try:
+            safety_manager.check_session_safety("telegram_client_creation")
+            LOGGER.writeLog("✅ Final session safety verified - proceeding with client creation")
+        except SessionSafetyError:
+            LOGGER.writeLog("🛡️ ABORT: Session safety check failed at client creation - preventing phone logout")
+            raise Exception("Session safety protection triggered - concurrent access detected")
+
         telegram_scraper = TelegramScraper(
             telegram_config['API_ID'],
             telegram_config['API_HASH'],
@@ -632,18 +657,17 @@ def fetch_new_messages_from_all_channels(self):
             fetch_messages_async(telegram_scraper, all_channels, config, cutoff_time, message_limit)
         )
         
-        LOGGER.writeLog(f"🎉 Efficient periodic message fetch completed. New messages processed: {total_messages}, " +
-                       f"skipped: {skipped_messages}")
-        
+        LOGGER.writeLog(f"Periodic message fetch completed. New messages processed: {total_messages}, " +
+                       f"skipped (too old): {skipped_messages}")
+       
         return {
             "status": "success",
-            "method": "efficient_tracking",
             "timestamp": datetime.now().isoformat(),
             "channels_checked": len(all_channels),
             "messages_processed": total_messages,
             "messages_skipped": skipped_messages,
-            "max_age_hours": 4,
-            "fallback_cutoff": cutoff_time.isoformat()
+            "age_cutoff": cutoff_time.isoformat(),
+            "fetch_limit": message_limit
         }
         
     except TelegramRateLimitError as e:
@@ -660,11 +684,36 @@ def fetch_new_messages_from_all_channels(self):
         }
         
     except TelegramSessionError as e:
-        # Session issue - retry with backoff but limit attempts
+        # Session issue - CHECK SESSION SAFETY before retry to prevent phone logout
         LOGGER.writeLog(f"🔐 SESSION ISSUE: {e}")
+
+        # CRITICAL: Check if session safety allows retry to prevent phone logout
+        try:
+            from src.integrations.session_safety import SessionSafetyManager, SessionSafetyError
+            safety = SessionSafetyManager()
+            safety.check_session_safety("celery_task_retry_validation")
+            LOGGER.writeLog("✅ Session safety verified - safe to retry")
+        except Exception as safety_error:
+            LOGGER.writeLog(f"� CRITICAL: Session safety check failed - {safety_error}")
+            LOGGER.writeLog("🛑 ABORTING RETRY to prevent phone logout!")
+            LOGGER.writeLog("💡 Please stop all workers, renew session, then restart workers")
+            LOGGER.writeLog("💡 Commands: ./scripts/deploy_celery.sh stop && ./scripts/telegram_session.sh renew && ./scripts/deploy_celery.sh start")
+            
+            # Return failure instead of retry to prevent dangerous session access
+            return {
+                "status": "session_safety_abort",
+                "timestamp": datetime.now().isoformat(),
+                "error": f"Session retry aborted for safety: {safety_error}",
+                "channels_checked": 0,
+                "messages_processed": 0,
+                "messages_skipped": 0,
+                "action_required": "stop_workers_renew_session_restart"
+            }
         
+        # Only retry if session safety allows it
+
         if self.request.retries < 2:  # Only retry twice for session issues
-            LOGGER.writeLog("🔄 Will retry with 5-minute backoff")
+            LOGGER.writeLog("🔄 Will retry with 5-minute backoff (session safety verified)")
             raise self.retry(exc=e, countdown=300)  # Wait 5 minutes before retry
         else:
             LOGGER.writeLog("❌ SESSION ISSUE: Max retries reached, stopping periodic fetch. Run 'python3 scripts/telegram_auth.py' to re-authenticate.")
@@ -699,21 +748,14 @@ def fetch_new_messages_from_all_channels(self):
 
 async def fetch_messages_async(telegram_scraper, all_channels, config, cutoff_time, message_limit):
     """
-    Async function to fetch messages from all channels using efficient tracking-based method
-    
-    This function now uses the new efficient fetching system that:
-    1. Uses Redis to track last processed message IDs per channel
-    2. Falls back to CSV files when Redis is unavailable
-    3. Only fetches messages newer than last processed ID
-    4. Respects 4-hour absolute age limit
-    5. Minimizes Telegram API calls to prevent rate limiting
-    
+    Async function to fetch messages from all channels with age filtering
+
     Args:
         telegram_scraper: Telegram scraper instance
         all_channels: List of channel information
         config: Configuration dictionary
-        cutoff_time: Fallback cutoff time (now mainly for logging/compatibility)
-        message_limit: Maximum messages per channel (now used for fallback only)
+        cutoff_time: Only process messages newer than this datetime
+        message_limit: Maximum number of messages to fetch per channel
     
     Returns:
         tuple: (processed_messages_count, skipped_messages_count)
@@ -724,35 +766,33 @@ async def fetch_messages_async(telegram_scraper, all_channels, config, cutoff_ti
     try:
         # Start Telegram client
         await telegram_scraper.start_client()
-        LOGGER.writeLog("Telegram client started for efficient periodic fetch")
+        LOGGER.writeLog("Telegram client started for periodic fetch")
         
-        # Initialize Redis for message tracking and duplicate detection
+        # Initialize Redis for duplicate detection
         import redis
         try:
             redis_client = redis.Redis(host='localhost', port=6379, db=1)
             redis_client.ping()  # Test connection
-            LOGGER.writeLog("✅ Redis connected - using efficient tracking-based fetching")
         except Exception as redis_error:
-            LOGGER.writeLog(f"⚠️  Redis connection failed, using CSV fallback: {redis_error}")
+            LOGGER.writeLog(f"Redis connection failed, proceeding without duplicate detection: {redis_error}")
             redis_client = None
         
-        # Fetch messages from each channel using the new efficient method
+        # Fetch messages from each channel with filtering applied at retrieval level
         for channel_info in all_channels:
             try:
                 channel = channel_info['channel']
                 country_code = channel_info['country_code']
                 
-                LOGGER.writeLog(f"🔄 Processing channel {channel} ({country_code}) with efficient tracking")
-                
-                # Use the new efficient fetching method
-                messages = await telegram_scraper.get_channel_messages_with_tracking(
-                    channel,
-                    config=config,
+                # Get recent messages with age and duplicate filtering applied
+                messages = await telegram_scraper.get_channel_messages(
+                    channel, 
+                    limit=message_limit, 
+                    cutoff_time=cutoff_time,
                     redis_client=redis_client,
-                    log_found_messages=True
+                    log_found_messages=True  # Let the utils function handle detailed logging
                 )
                 
-                # Process each new message that passed all filters
+                # Process each message that passed all filters
                 for message_data in messages:
                     # Add country information
                     message_data['country_code'] = country_code
@@ -794,53 +834,18 @@ async def fetch_messages_async(telegram_scraper, all_channels, config, cutoff_ti
                     await asyncio.sleep(0.1)
                     
             except Exception as e:
-                LOGGER.writeLog(f"❌ Error fetching from channel {channel_info['channel']}: {e}")
-                
-                # Fallback to original method for this channel only
-                LOGGER.writeLog(f"🔄 Attempting fallback fetch for {channel_info['channel']}")
-                try:
-                    fallback_messages = await telegram_scraper.get_channel_messages(
-                        channel_info['channel'], 
-                        limit=min(message_limit, 5),  # Reduced limit for fallback
-                        cutoff_time=cutoff_time,
-                        redis_client=redis_client,
-                        log_found_messages=True
-                    )
-                    
-                    LOGGER.writeLog(f"📋 Fallback method retrieved {len(fallback_messages)} messages from {channel_info['channel']}")
-                    
-                    # Process fallback messages with same logic as above
-                    for message_data in fallback_messages:
-                        message_data['country_code'] = country_code
-                        message_data['Country'] = channel_info['country_name']
-                        message_data['text'] = message_data.get('Message_Text', '')
-                        message_data['id'] = message_data.get('Message_ID', '')
-                        message_data['channel'] = channel_info['channel']
-                        
-                        # Skip empty messages
-                        message_text = message_data.get('text', '') or message_data.get('Message_Text', '')
-                        if not message_text or not message_text.strip():
-                            skipped_messages += 1
-                            continue
-                        
-                        # Queue for processing
-                        task = process_telegram_message.delay(message_data, config)
-                        total_messages += 1
-                        await asyncio.sleep(0.1)
-                        
-                except Exception as fallback_error:
-                    LOGGER.writeLog(f"❌ Fallback also failed for {channel_info['channel']}: {fallback_error}")
-                    continue
+                LOGGER.writeLog(f"Error fetching from channel {channel_info['channel']}: {e}")
+                continue
                 
         # Stop Telegram client with proper cleanup
         await telegram_scraper.stop_client()
-        LOGGER.writeLog("Telegram client stopped after efficient periodic fetch")
-        
+        LOGGER.writeLog("Telegram client stopped after periodic fetch")
+       
         # Small delay to ensure proper cleanup
         await asyncio.sleep(1)
         
     except Exception as e:
-        LOGGER.writeLog(f"❌ Error in efficient async message fetch: {e}")
+        LOGGER.writeLog(f"Error in async message fetch: {e}")
         # Ensure client is stopped even if there was an error
         try:
             await telegram_scraper.stop_client()
@@ -868,6 +873,46 @@ def health_check():
             "error": str(e),
             "timestamp": datetime.now().isoformat()
         }
+
+
+@celery.task
+def send_system_startup_notification():
+    """
+    Send system startup notification to Teams admin (session-safe).
+    This runs as a Celery task to avoid concurrent session access during startup.
+    """
+    try:
+        # Small delay to ensure workers are fully initialized
+        import time
+        time.sleep(2)
+        
+        LOGGER.writeLog("Sending system startup notification via Celery task")
+        
+        # Import here to avoid circular imports
+        from src.integrations.teams_utils import send_system_startup
+        
+        # List of components that are available
+        components_started = [
+            "Celery Workers", 
+            "Celery Beat Scheduler",
+            "Teams Admin Notifier", 
+            "Message Processing Pipeline",
+            "Session-Safe Architecture"
+        ]
+        
+        # Send the notification (Teams only, no Telegram access)
+        success = send_system_startup(components_started)
+        
+        if success:
+            LOGGER.writeLog("✅ System startup notification sent successfully to Teams admin")
+            return {"status": "success", "notification_sent": True}
+        else:
+            LOGGER.writeLog("⚠️  System startup notification failed or admin Teams not configured")
+            return {"status": "warning", "notification_sent": False, "reason": "Admin Teams not configured"}
+            
+    except Exception as e:
+        LOGGER.writeLog(f"❌ Error sending system startup notification: {e}")
+        return {"status": "error", "error": str(e)}
 
 
 def get_next_available_row(sp_processor, sheet_name):

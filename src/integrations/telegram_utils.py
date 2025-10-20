@@ -664,6 +664,8 @@ class TelegramScraper:
 
     async def get_channel_messages_with_tracking(self, channel_username, config=None, redis_client=None, log_found_messages=True):
         """
+        I'M NO LONGER USING THIS METHOD SINCE IT CAUSES THE TELEGRAM SESSION TO EXPIRE, PARTICULARLY WHEN THE PROJECT WAS NOT RUN FOR A WHILE.
+        
         Efficient message fetching with Redis tracking and CSV fallback
         
         This method implements optimized message fetching that:
