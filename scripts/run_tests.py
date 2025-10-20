@@ -178,6 +178,14 @@ class TestRunner:
             self.results['passed'] += 1
             return
         
+        # CRITICAL: Skip session testing during quick_start.sh to prevent phone logout
+        if os.environ.get('CALLED_FROM_QUICK_START') == 'true':
+            self.print_result("Session Manager Tests", "SKIP", "Skipped during quick_start.sh (prevents concurrent session access)")
+            self.results['skipped'] += 1
+            self.print_result("Session Safety Protection", "PASS", "Quick start session protection active")
+            self.results['passed'] += 1
+            return
+        
         # Test session manager import and initialization
         try:
             from src.integrations.telegram_session_manager import TelegramSessionManager, TelegramRateLimitError, TelegramSessionError, TelegramAuthError

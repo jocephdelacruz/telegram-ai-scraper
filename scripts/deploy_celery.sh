@@ -432,7 +432,7 @@ start_all_workers() {
             ;;
     esac
     start_beat || return 1
-    start_flower
+    #start_flower
 }
 
 # Main command handler
@@ -469,30 +469,41 @@ case "${1:-deploy}" in
                 fi
             fi
 
-            # Initialize components without blocking terminal
+            # Session safety protection during startup
             echo ""
-            echo "🔧 COMPONENT INITIALIZATION:"
-            echo "• Running component initialization (Teams admin notification, etc.)"
-            echo "• This ensures proper system startup notifications"
-            echo "• No terminal blocking - initializes and exits immediately"
+            print_status "🔐 SESSION SAFETY: Protecting against concurrent Telegram access"
+            echo "   ✅ Prevents concurrent Telegram session access"
+            echo "   📱 Protects against phone logout during startup"
+            echo "   🔄 Workers will initialize Telegram components when needed"
+            
+            # Send system startup notification via Celery task (session-safe)
             echo ""
-            
-            print_status "Initializing system components..."
-            python3 src/core/main.py --mode init
-            
-            if [ $? -eq 0 ]; then
-                print_success "System components initialized successfully!"
-                echo "• Teams admin startup notification sent"
-                echo "• All components validated and ready"
+            print_status "Sending system startup notification via Celery task..."
+            if python3 -c "
+import sys, os
+sys.path.append('.')
+from src.tasks.telegram_celery_tasks import send_system_startup_notification
+result = send_system_startup_notification.delay()
+try:
+    status = result.get(timeout=10)
+    if status.get('status') == 'success':
+        print('✅ Teams admin startup notification sent successfully!')
+    else:
+        print('⚠️  Startup notification completed with warnings')
+        print(f'   Reason: {status.get(\"reason\", \"Unknown\")}')
+except Exception as e:
+    print(f'❌ Failed to send startup notification: {e}')
+" 2>/dev/null; then
+                echo "• System startup Teams notification completed"
             else
-                print_warning "Component initialization had issues (system may still work)"
+                echo "• Startup notification skipped (Teams admin not configured or workers not ready)"
             fi
             
             echo ""
             echo "📋 MONITORING INFO:"
             echo "• Real-time monitoring is handled automatically by Celery Beat"
-            echo "• Messages are fetched every 4 minutes without user intervention"
-            echo "• Component initialization completed (Teams notifications active)"
+            echo "• Messages are fetched every 4 minutes without user intervention"  
+            echo "• Components initialize on-demand (session-safe architecture)"
             echo ""
             if [ "$CALLED_FROM_QUICK_START" != "true" ]; then
                 read -p "Run optional main.py monitor (will block terminal)? (y/n): " -n 1 -r

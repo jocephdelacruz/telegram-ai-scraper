@@ -197,6 +197,17 @@ class TelegramSessionManager:
                 # Unknown error
                 await self._cleanup_client()
                 raise TelegramAuthError(f"Unknown authentication error: {error_msg}")
+        
+        except KeyboardInterrupt:
+            # Handle user interruption (Ctrl+C)
+            self.logger.warning("Client creation interrupted by user")
+            await self._cleanup_client()
+            raise TelegramAuthError("Authentication interrupted by user")
+            
+        finally:
+            # CRITICAL: Always release session lock regardless of success/failure
+            if self._session_lock:
+                await self._release_session_lock()
     
     async def _test_connection(self):
         """Test the current connection with a simple API call"""

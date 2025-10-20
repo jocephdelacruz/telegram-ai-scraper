@@ -199,6 +199,24 @@ cmd_auth() {
         cmd_backup
     fi
     
+    # CRITICAL: Clear any dangerous queued tasks before renewal
+    print_status "Clearing potentially dangerous queued tasks..."
+    local cleared_tasks=0
+    for queue in "telegram_fetch" "telegram_processing"; do
+        local count=$(redis-cli llen "$queue" 2>/dev/null || echo "0")
+        if [ "$count" -gt 0 ]; then
+            redis-cli del "$queue" >/dev/null 2>&1
+            print_warning "Cleared $count queued tasks from $queue queue"
+            cleared_tasks=$((cleared_tasks + count))
+        fi
+    done
+    
+    if [ $cleared_tasks -gt 0 ]; then
+        print_warning "Cleared $cleared_tasks total queued tasks to prevent session conflicts"
+    else
+        print_success "No dangerous queued tasks found"
+    fi
+    
     # Check session safety
     print_status "Ensuring safe authentication environment..."
     if ! run_python_safe "check_session_safety.py" >/dev/null 2>&1; then
@@ -260,7 +278,7 @@ cmd_renew() {
     if ! run_python_safe "check_session_safety.py" >/dev/null 2>&1; then
         print_error "Cannot renew - session conflicts detected!"
         print_error "Stop all workers before renewal"
-        print_info "Run: ./scripts/deploy_celery.sh stop --force"
+        print_info "Run: ./scripts/deploy_celery.sh stop"
         return 1
     fi
     
@@ -401,6 +419,21 @@ cmd_safety_check() {
             ;;
     esac
     
+    return $exit_code
+}
+
+# Command: diagnostics
+cmd_diagnostics() {
+    print_header "Comprehensive Session Diagnostics"
+    
+    run_python_safe "telegram_session_check.py"
+    local exit_code=$?
+
+    if [ $exit_code -eq 0 ]; then
+        print_success "Diagnostics completed successfully"
+    else
+        print_warning "Diagnostics completed with issues - see output above"
+    fi
     return $exit_code
 }
 

@@ -9,6 +9,7 @@ import sys
 import os
 import argparse
 from datetime import datetime
+from telethon import TelegramClient
 
 # Add project root to path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -195,6 +196,47 @@ async def authenticate_telegram(force_renewal=False):
         session_file = os.path.join(project_root, 'telegram_session.session')
         if os.path.exists(session_file):
             if force_renewal:
+                # CRITICAL: Properly disconnect existing session BEFORE removal to prevent phone logout
+                print("🔌 Properly disconnecting existing session...")
+                existing_client = None
+                
+                try:
+                    # Use the existing session file directly (safer approach)
+                    existing_client = TelegramClient('telegram_session', telegram_config['API_ID'], telegram_config['API_HASH'])
+                    
+                    # Connect using existing session
+                    await existing_client.connect()
+                    # Check if session is valid using get_me() (more reliable than is_user_authorized)
+                    try:
+                        me = await existing_client.get_me()  # This tests actual API connectivity
+                        print(f"📱 Session is valid - gracefully logging out... (User: {me.first_name})")
+                        
+                        # Proper server-side logout (invalidates session on Telegram servers)
+                        await existing_client.log_out()
+                        print("✅ Session disconnected gracefully from Telegram servers")
+                        
+                        # Give Telegram servers time to process the logout
+                        import asyncio
+                        print("⏳ Waiting for logout to process on Telegram servers...")
+                        await asyncio.sleep(3)
+                        
+                    except Exception as api_error:
+                        print(f"ℹ️  Session appears invalid (API test failed): {api_error}")
+                        print("   Skipping logout - session already disconnected or invalid")
+                    
+                    
+                except Exception as disconnect_error:
+                    print(f"⚠️  Warning: Could not gracefully disconnect session: {disconnect_error}")
+                    print("   Proceeding with renewal (may cause temporary phone logout)")
+                    
+                finally:
+                    # CRITICAL: Always cleanup client
+                    if existing_client:
+                        try:
+                            await existing_client.disconnect()
+                        except Exception as e:
+                            print(f"   Warning: Error disconnecting existing client: {e}")
+                
                 # Create backup before removal
                 try:
                     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -257,15 +299,34 @@ async def authenticate_telegram(force_renewal=False):
             print(f"🚫 RATE LIMITED: {e}")
             print("⏰ You must wait for the rate limit to expire before authenticating")
             print("💡 Use 'python3 tests/check_telegram_status.py' to monitor the rate limit")
+            # Ensure client is properly closed on rate limit
+            if 'telegram_scraper' in locals():
+                try:
+                    await telegram_scraper.stop_client()
+                except Exception:
+                    pass
             return False
             
         except TelegramSessionError as e:
             print(f"🔐 SESSION ERROR: {e}")
             print("💡 This is normal during first-time authentication - please continue")
+            # Ensure client is properly closed on session error
+            if 'telegram_scraper' in locals():
+                try:
+                    await telegram_scraper.stop_client()
+                except Exception:
+                    pass
             return False
             
         except TelegramAuthError as e:
             print(f"🚨 AUTHENTICATION ERROR: {e}")
+            
+            # Ensure client is properly closed on auth error
+            if 'telegram_scraper' in locals():
+                try:
+                    await telegram_scraper.stop_client()
+                except Exception:
+                    pass
             
             error_msg = str(e)
             if "Invalid API" in error_msg:
@@ -282,6 +343,13 @@ async def authenticate_telegram(force_renewal=False):
         except Exception as auth_error:
             print(f"❌ Detailed authentication error: {auth_error}")
             print(f"❌ Error type: {type(auth_error).__name__}")
+            
+            # Ensure client is properly closed on any error
+            if 'telegram_scraper' in locals():
+                try:
+                    await telegram_scraper.stop_client()
+                except Exception:
+                    pass
             
             # Common error scenarios for legacy errors
             error_str = str(auth_error)
@@ -332,8 +400,9 @@ def safe_worker_stop():
     
     try:
         print("🛑 Stopping Celery workers...")
+        # Use graceful shutdown for proper Telegram session cleanup, but bypass interactive prompt
         result = subprocess.run(['./scripts/deploy_celery.sh', 'stop'], 
-                              capture_output=True, text=True, cwd=project_root)
+                              input='y\n', text=True, capture_output=True, cwd=project_root)
         
         if result.returncode != 0:
             print(f"❌ Worker stop script failed: {result.stderr}")
@@ -372,60 +441,47 @@ def safe_worker_start():
     import time
     
     try:
-        print("🚀 Starting complete system with quick_start.sh...")
-        print("   This includes: workers, Flower monitoring, and comprehensive testing")
+        print("🚀 Starting Celery workers...")
+        result = subprocess.run(['./scripts/deploy_celery.sh', 'start'], 
+                              capture_output=True, text=True, cwd=project_root)
         
-        # Use quick_start.sh for complete system initialization
-        result = subprocess.run(['./scripts/quick_start.sh'], 
-                              cwd=project_root, env={**os.environ, 'CALLED_FROM_SAFE_RENEW': 'true'})
+        if result.returncode != 0:
+            print(f"❌ Worker start script failed: {result.stderr}")
+            return False
         
-        if result.returncode == 0:
-            print("✅ Complete system startup successful!")
-            print("   - Workers initialized and responding")
-            print("   - Flower monitoring available")
-            print("   - System tests passed")
-            return True
-        else:
-            print(f"❌ System startup had issues (exit code: {result.returncode})")
-            print("💡 Check the output above for details")
-            
-            # Still check if basic workers are at least running
-            print("🔍 Checking if basic workers started despite issues...")
+        print("⏳ Waiting for workers to initialize...")
+        
+        # Wait for workers to be properly initialized
+        max_wait_time = 20  # Maximum 20 seconds wait
+        check_interval = 3  # Check every 3 seconds
+        waited = 0
+        
+        while waited < max_wait_time:
             try:
+                # Check if workers are responding
                 check_result = subprocess.run(['celery', '-A', 'src.tasks.telegram_celery_tasks.celery', 'inspect', 'ping'], 
                                             capture_output=True, text=True, cwd=project_root, timeout=5)
                 
                 if check_result.returncode == 0:
-                    print("✅ Basic workers are responding (startup had minor issues)")
+                    print("✅ Workers initialized and responding")
                     return True
                 else:
-                    print("❌ Workers are not responding")
-                    return False
+                    print(f"⏳ Workers still initializing... ({waited}s/{max_wait_time}s)")
                     
-            except Exception:
-                print("❌ Could not verify worker status")
-                return False
+            except subprocess.TimeoutExpired:
+                print(f"⏳ Workers still starting... ({waited}s/{max_wait_time}s)")
+            except Exception as e:
+                print(f"⏳ Checking workers... ({waited}s/{max_wait_time}s)")
+            
+            time.sleep(check_interval)
+            waited += check_interval
+        
+        print("⚠️  Warning: Worker initialization timeout - they may still be starting")
+        return True
         
     except Exception as e:
-        print(f"❌ Error during system startup: {e}")
-        print("💡 Falling back to basic worker start...")
-        
-        # Fallback to basic deployment if quick_start.sh fails
-        try:
-            result = subprocess.run(['./scripts/deploy_celery.sh', 'start'], 
-                                  capture_output=True, text=True, cwd=project_root)
-            
-            if result.returncode == 0:
-                print("✅ Basic workers started successfully (fallback mode)")
-                print("💡 You may need to start Flower manually if needed")
-                return True
-            else:
-                print("❌ Even basic worker start failed")
-                return False
-                
-        except Exception as fallback_error:
-            print(f"❌ Fallback also failed: {fallback_error}")
-            return False
+        print(f"❌ Error during worker start: {e}")
+        return False
 
 def backup_session():
     """Create a backup of the current session"""
@@ -521,7 +577,6 @@ Session Safety:
             print("1. Stop Celery workers safely")
             print("2. Backup existing session")
             print("3. Renew session (SMS required)")
-            print("4. Restart workers")
             print()
         
         # Check current session
@@ -567,9 +622,17 @@ Session Safety:
                 print("💡 Wait a few minutes and try again")
             return 1
         
-        # Step 3: Perform renewal
+        # Step 3: Wait additional time for complete session cleanup
         if not args.quiet:
-            print("\n3️⃣  Starting session renewal...")
+            print("\n3️⃣  Ensuring complete session cleanup...")
+            print("⏳ Waiting for all session processes to fully terminate...")
+        
+        import time
+        time.sleep(5)  # Give extra time for session cleanup
+        
+        # Step 4: Perform renewal
+        if not args.quiet:
+            print("\n4️⃣  Starting session renewal...")
         
         try:
             result = asyncio.run(authenticate_telegram(force_renewal=True))
@@ -577,22 +640,7 @@ Session Safety:
             if result:
                 if not args.quiet:
                     print("✅ Session renewal completed!")
-                
-                # Step 4: Restart workers
-                if not args.quiet:
-                    print("\n4️⃣  Restarting Celery workers...")
-                
-                if safe_worker_start():
-                    if not args.quiet:
-                        print("✅ Workers restarted successfully")
-                        print("\n🎉 Safe renewal workflow completed!")
-                        print("✅ Your scraper is running with a fresh session")
-                    return 0
-                else:
-                    if not args.quiet:
-                        print("⚠️  Session renewed but failed to restart workers")
-                        print("💡 Manually run: ./scripts/deploy_celery.sh start")
-                    return 1
+                return 0
             else:
                 if not args.quiet:
                     print("❌ Session renewal failed")
@@ -602,6 +650,7 @@ Session Safety:
             if not args.quiet:
                 print(f"❌ Safe renewal failed: {e}")
                 print("💡 Workers may still be stopped - check with: ./scripts/status.sh")
+                print("💡 Try restoring from backup: cp telegram_session_backup_*.session telegram_session.session")
             return 1
     
     # Handle renewal or initial authentication
