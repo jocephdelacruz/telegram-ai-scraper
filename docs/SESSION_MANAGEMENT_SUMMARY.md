@@ -28,6 +28,7 @@
 - **`scripts/telegram_session.sh`** - 🔐 **Comprehensive unified wrapper** (NEW - RECOMMENDED)
   - `status` - Session age, size, and recommendations
   - `test` - Validate session without SMS requirement  
+  - `refresh` - ✨ **NEW**: Refresh session + clear Redis caches (safe, no file deletion)
   - `auth` - Interactive authentication with safety checks
   - `renew` - Safe renewal workflow with automatic worker management
   - `backup` - Create timestamped session backups

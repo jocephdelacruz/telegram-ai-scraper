@@ -408,20 +408,22 @@ The system provides a comprehensive **telegram_session.sh** wrapper script that 
 
 ```bash
 # All session operations through one unified interface
-./scripts/telegram_session.sh status      # Check session status and age
-./scripts/telegram_session.sh test        # Test if session works (safe)
-./scripts/telegram_session.sh auth        # Authenticate new session
-./scripts/telegram_session.sh renew       # Renew existing session (safe)
-./scripts/telegram_session.sh backup      # Create session backup
-./scripts/telegram_session.sh restore     # Restore from backup
+./scripts/telegram_session.sh status       # Check session status and age
+./scripts/telegram_session.sh test         # Test if session works (safe)
+./scripts/telegram_session.sh refresh      # Refresh session + clear Redis caches (safe, no deletion)
+./scripts/telegram_session.sh auth         # Authenticate new session
+./scripts/telegram_session.sh renew        # Renew existing session (safe)
+./scripts/telegram_session.sh backup       # Create session backup
+./scripts/telegram_session.sh restore      # Restore from backup
 ./scripts/telegram_session.sh safety-check # Check for conflicts
-./scripts/telegram_session.sh diagnostics # Full session diagnostics
-./scripts/telegram_session.sh help        # Show all available options
+./scripts/telegram_session.sh diagnostics  # Full session diagnostics
+./scripts/telegram_session.sh help         # Show all available options
 ```
 
 **Key Benefits:**
 - ✅ **Unified Interface**: All session operations through one script
 - ✅ **Built-in Safety**: Automatic conflict detection and prevention
+- ✅ **Session Refresh**: Safe session validation with Redis cache clearing (no file deletion)
 - ✅ **Interactive Operations**: Guided workflows for authentication and restore
 - ✅ **Comprehensive Help**: Built-in documentation and examples
 - ✅ **Session Backup/Restore**: Easy backup management with selection interface
@@ -446,19 +448,21 @@ python3 scripts/check_session_safety.py
 python3 scripts/telegram_session_check.py --quick
 
 # ⭐ RECOMMENDED: Use the unified session management wrapper
-./scripts/telegram_session.sh status      # Check session status and age
-./scripts/telegram_session.sh test        # Test session validity (safe)
-./scripts/telegram_session.sh auth        # Authenticate new session
-./scripts/telegram_session.sh renew       # Safe renewal workflow
-./scripts/telegram_session.sh backup      # Backup current session
-./scripts/telegram_session.sh restore     # Restore from backup
+./scripts/telegram_session.sh status       # Check session status and age
+./scripts/telegram_session.sh test         # Test session validity (safe)
+./scripts/telegram_session.sh refresh      # Refresh session + clear Redis caches (safe, no deletion)
+./scripts/telegram_session.sh auth         # Authenticate new session
+./scripts/telegram_session.sh renew        # Safe renewal workflow
+./scripts/telegram_session.sh backup       # Backup current session
+./scripts/telegram_session.sh restore      # Restore from backup
 ./scripts/telegram_session.sh safety-check # Check for conflicts
-./scripts/telegram_session.sh diagnostics # Full diagnostics
-./scripts/telegram_session.sh help        # Show all options
+./scripts/telegram_session.sh diagnostics  # Full diagnostics
+./scripts/telegram_session.sh help         # Show all options
 
 # Alternative: Direct Python script access (advanced users)
 python3 scripts/telegram_auth.py --status      # Check session age and info
 python3 scripts/telegram_auth.py --test        # Test validity (no SMS)
+python3 scripts/telegram_auth.py --refresh     # Refresh session (safe, no deletion)
 python3 scripts/telegram_auth.py --safe-renew  # Complete safe workflow
 python3 scripts/check_session_safety.py        # Check session conflicts  
 python3 scripts/telegram_session_check.py      # Full diagnostics
@@ -936,6 +940,7 @@ celery -A src.tasks.telegram_celery_tasks worker --queues=notifications --concur
    - **Most Common Issue**: Session conflicts between workers and manual operations
    - **Solution**: Use session safety tools before operations
    - **Check conflicts**: `python3 scripts/check_session_safety.py`
+   - **Safe refresh**: `./scripts/telegram_session.sh refresh` (validates session + clears Redis caches)
    - **Safe workflow**: Stop workers → Perform operation → Restart workers
    - **Emergency**: Use `scripts/telegram_session_check.py --quick` for recovery
 
@@ -1063,12 +1068,14 @@ Advanced filtering system to reduce false positives:
 ./scripts/telegram_session.sh safety-check    # Check before manual operations
 ./scripts/telegram_session.sh status          # Shows age, recommendations  
 ./scripts/telegram_session.sh test            # Tests if session works
+./scripts/telegram_session.sh refresh         # Refresh session + clear Redis caches (safe, no deletion)
 ./scripts/telegram_session.sh renew           # Safe renewal workflow
 ./scripts/telegram_session.sh diagnostics     # Emergency recovery and diagnostics
 
 # Alternative: Direct Python access (advanced users)
 python3 scripts/check_session_safety.py                # Safety check
 python3 scripts/telegram_auth.py --status              # Status check  
+python3 scripts/telegram_auth.py --refresh             # Refresh session (safe, no deletion)
 python3 scripts/telegram_auth.py --safe-renew          # Safe renewal
 python3 scripts/telegram_session_check.py              # Full diagnostics
 

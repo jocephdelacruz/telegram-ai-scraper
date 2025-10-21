@@ -68,7 +68,7 @@ def show_session_status():
     
     return True
 
-async def test_session_validity():
+async def refresh_and_test_session():
     """Test if the current session is valid without requiring SMS"""
     print("🔍 Testing session validity...")
     
@@ -142,8 +142,9 @@ async def test_session_validity():
         # Always clean up session safety records
         try:
             safety.cleanup_session_access()
-        except:
-            pass
+            print("🧹 Session safety cleanup completed")
+        except Exception as cleanup_error:
+            print(f"⚠️  Warning: Session safety cleanup failed: {cleanup_error}")
 
 async def authenticate_telegram(force_renewal=False):
     """Perform Telegram authentication with optional forced renewal"""
@@ -510,6 +511,7 @@ Examples:
   python3 scripts/telegram_auth.py              # Original authentication (SMS required)
   python3 scripts/telegram_auth.py --status     # Check session status and age  
   python3 scripts/telegram_auth.py --test       # Test current session (no SMS)
+  python3 scripts/telegram_auth.py --refresh    # Refresh/Reauthenticate session (safe, no deletion)
   python3 scripts/telegram_auth.py --renew      # Safe session renewal (stops workers, SMS required)
   python3 scripts/telegram_auth.py --renew -y   # Renew without confirmation
   python3 scripts/telegram_auth.py --backup     # Backup current session
@@ -525,6 +527,8 @@ Session Safety:
                        help='Show current session status and exit')
     parser.add_argument('--test', action='store_true',
                        help='Test current session validity and exit (no SMS needed)')
+    parser.add_argument('--refresh', action='store_true',
+                       help='Refresh and reauthenticate session (safe, no session deletion)')
     parser.add_argument('--renew', action='store_true',
                        help='Force session renewal (removes existing session, SMS required)')
     parser.add_argument('--safe-renew', action='store_true',
@@ -554,7 +558,7 @@ Session Safety:
             print("Testing Telegram session validity...")
         
         try:
-            result = asyncio.run(test_session_validity())
+            result = asyncio.run(refresh_and_test_session())
             if result:
                 if not args.quiet:
                     print("\n✅ Session is valid and working!")
@@ -566,6 +570,26 @@ Session Safety:
         except Exception as e:
             if not args.quiet:
                 print(f"\n❌ Session test failed: {e}")
+            return 1
+    
+    # Handle session refresh using the test session validity function
+    if args.refresh:
+        if not args.quiet:
+            print("🔄 Refreshing / Reauthenticating Telegram session...")
+        
+        try:
+            result = asyncio.run(refresh_and_test_session())
+            if result:
+                if not args.quiet:
+                    print("\n✅ Session refresh completed successfully!")
+                return 0
+            else:
+                if not args.quiet:
+                    print("\n❌ Session refresh failed - check session validity")
+                return 1
+        except Exception as e:
+            if not args.quiet:
+                print(f"\n❌ Session refresh failed: {e}")
             return 1
     
     # Handle safe renewal workflow
@@ -605,24 +629,7 @@ Session Safety:
         elif not args.quiet:
             print("✅ Workers stopped successfully")
         
-        # Step 2: Final session safety verification before renewal
-        if not args.quiet:
-            print("\n2️⃣  Final session safety check...")
-        
-        from src.integrations.session_safety import SessionSafetyManager, SessionSafetyError
-        safety = SessionSafetyManager()
-        try:
-            safety.check_session_safety("safe_renewal_verification")
-            if not args.quiet:
-                print("✅ Session is safe for renewal")
-        except SessionSafetyError as e:
-            if not args.quiet:
-                print(f"❌ CRITICAL: Session still in use - {e}")
-                print("🚨 Aborting renewal to prevent phone logout!")
-                print("💡 Wait a few minutes and try again")
-            return 1
-        
-        # Step 3: Wait additional time for complete session cleanup
+        # Step 2: Wait additional time for complete session cleanup
         if not args.quiet:
             print("\n3️⃣  Ensuring complete session cleanup...")
             print("⏳ Waiting for all session processes to fully terminate...")

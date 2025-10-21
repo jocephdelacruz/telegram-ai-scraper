@@ -170,22 +170,6 @@ class TestRunner:
         """Test Telegram session manager functionality"""
         self.print_section("Telegram Session Manager Tests")
         
-        # Skip session testing during post-renewal context to prevent concurrent access
-        if os.environ.get('CALLED_FROM_SAFE_RENEW') == 'true':
-            self.print_result("Session Manager Tests", "SKIP", "Skipped during post-renewal context (prevents session conflicts)")
-            self.results['skipped'] += 1
-            self.print_result("Session Safety Check", "PASS", "Post-renewal session protection active")
-            self.results['passed'] += 1
-            return
-        
-        # CRITICAL: Skip session testing during quick_start.sh to prevent phone logout
-        if os.environ.get('CALLED_FROM_QUICK_START') == 'true':
-            self.print_result("Session Manager Tests", "SKIP", "Skipped during quick_start.sh (prevents concurrent session access)")
-            self.results['skipped'] += 1
-            self.print_result("Session Safety Protection", "PASS", "Quick start session protection active")
-            self.results['passed'] += 1
-            return
-        
         # Test session manager import and initialization
         try:
             from src.integrations.telegram_session_manager import TelegramSessionManager, TelegramRateLimitError, TelegramSessionError, TelegramAuthError
@@ -319,6 +303,22 @@ class TestRunner:
             self.results['failed'] += 1
             self.results['errors'].append(f"Session validity test error: {e}")
             
+        # Skip advanced session testing during post-renewal context to prevent concurrent access
+        if os.environ.get('CALLED_FROM_SAFE_RENEW') == 'true':
+            self.print_result("Session Manager Tests", "SKIP", "Skipped during post-renewal context (prevents session conflicts)")
+            self.results['skipped'] += 1
+            self.print_result("Session Safety Check", "PASS", "Post-renewal session protection active")
+            self.results['passed'] += 1
+            return
+        
+        # CRITICAL: Skip advanced session testing during quick_start.sh to prevent phone logout
+        if os.environ.get('CALLED_FROM_QUICK_START') == 'true':
+            self.print_result("Session Manager Tests", "SKIP", "Skipped during quick_start.sh (prevents concurrent session access)")
+            self.results['skipped'] += 1
+            self.print_result("Session Safety Protection", "PASS", "Quick start session protection active")
+            self.results['passed'] += 1
+            return
+        
         # Test session status checker script (with safety check)
         # Check if it's safe to run session checker
         try:

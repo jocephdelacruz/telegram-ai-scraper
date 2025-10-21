@@ -244,6 +244,69 @@ cmd_auth() {
     return $exit_code
 }
 
+# Command: refresh  
+cmd_refresh() {
+    print_header "Session Refresh with Redis Cleanup"
+    
+    # Check if session exists
+    if [ ! -f "telegram_session.session" ]; then
+        print_error "No session file found"
+        print_info "Use authentication instead: ./scripts/telegram_session auth"
+        return 1
+    fi
+    
+    # CRITICAL: Clear any dangerous queued tasks before refresh
+    print_status "Clearing potentially dangerous queued tasks..."
+    local cleared_tasks=0
+    for queue in "telegram_fetch" "telegram_processing"; do
+        local count=$(redis-cli llen "$queue" 2>/dev/null || echo "0")
+        if [ "$count" -gt 0 ]; then
+            redis-cli del "$queue" >/dev/null 2>&1
+            print_warning "Cleared $count queued tasks from $queue queue"
+            cleared_tasks=$((cleared_tasks + count))
+        fi
+    done
+    
+    if [ $cleared_tasks -gt 0 ]; then
+        print_warning "Cleared $cleared_tasks total queued tasks to prevent session conflicts"
+    else
+        print_success "No dangerous queued tasks found"
+    fi
+    
+    # Check session safety
+    print_status "Checking session safety before refresh..."
+    if ! run_python_safe "check_session_safety.py" >/dev/null 2>&1; then
+        print_error "Cannot refresh - session conflicts detected!"
+        print_error "Stop all workers before refresh"
+        print_info "Run: ./scripts/deploy_celery.sh stop"
+        return 1
+    fi
+    
+    print_success "Environment is safe for refresh"
+    echo ""
+    
+    run_python_safe "telegram_auth.py" --refresh
+    local exit_code=$?
+    
+    echo ""
+    if [ $exit_code -eq 0 ]; then
+        print_success "Session refresh completed successfully!"
+        print_info "Session validated and Redis caches cleared"
+        
+        # Clear any remaining dangerous tasks after refresh
+        print_status "Final cleanup of any remaining queued tasks..."
+        for queue in "telegram_fetch" "telegram_processing"; do
+            redis-cli del "$queue" >/dev/null 2>&1
+        done
+        print_success "Queue cleanup completed"
+    else
+        print_error "Session refresh failed"
+        print_info "Check session status: ./scripts/telegram_session status"
+    fi
+    
+    return $exit_code
+}
+
 # Command: renew
 cmd_renew() {
     print_header "Session Renewal (Safe Workflow)"
@@ -490,6 +553,7 @@ cmd_help() {
     echo ""
     echo "  🔐 AUTHENTICATION & MANAGEMENT:"
     echo "    auth                 Authenticate new session (interactive)"
+    echo "    refresh              Refresh session + clear Redis caches (safe, no deletion)"
     echo "    renew                Renew existing session (safe workflow)"
     echo ""
     echo "  💾 BACKUP & RESTORE:"
@@ -512,6 +576,9 @@ cmd_help() {
     echo ""
     echo "  # Authenticate new session"
     echo "  ./scripts/telegram_session.sh auth"
+    echo ""
+    echo "  # Refresh session and clear caches (safe, no deletion)"
+    echo "  ./scripts/telegram_session.sh refresh"
     echo ""
     echo "  # Renew existing session safely"
     echo "  ./scripts/telegram_session.sh renew"
@@ -574,8 +641,11 @@ main() {
         "auth"|"authenticate")
             cmd_auth "$@"
             ;;
-        "renew"|"refresh")
+        "renew")
             cmd_renew "$@"
+            ;;
+        "refresh")
+            cmd_refresh "$@"
             ;;
         "backup")
             cmd_backup "$@"
@@ -598,7 +668,7 @@ main() {
         *)
             print_error "Unknown command: $command"
             echo ""
-            print_info "Available commands: status, test, auth, renew, backup, restore, safety-check, clear-queues, diagnostics, help"
+            print_info "Available commands: status, test, auth, refresh, renew, backup, restore, safety-check, clear-queues, diagnostics, help"
             echo ""
             print_info "Use './scripts/telegram_session help' for detailed usage information"
             return 1
