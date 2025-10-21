@@ -30,7 +30,7 @@ ALL_WORKERS=1              # Used for consolidated mode - handles all queues tog
 # SPLIT MODE: 3-tier architecture for optimal resource allocation  
 MAIN_PROCESSOR_WORKERS=1   # Used for all modes - AI-intensive telegram processing
 DATA_SERVICES_WORKERS=1    # Used for split mode - SharePoint/Backup/Teams operations
-MAINTENANCE_SPLIT_WORKERS=1 # Used for split mode - Cleanup/Monitoring tasks
+MAINTENANCE_SPLIT_WORKERS=0 # Used for split mode - Cleanup/Monitoring tasks
 
 # ORIGINAL MODE: Individual workers per queue type
 NOTIFICATIONS_WORKERS=1    # Used for original mode - Teams notifications only
