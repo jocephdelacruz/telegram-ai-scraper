@@ -6,7 +6,7 @@
 # 
 # Then add this line to your crontab:
 
-5 0 * * * /bin/bash -c "cd /home/ubuntu/TelegramScraper/telegram-ai-scraper && source telegram-ai-scraper_env/bin/activate && /home/ubuntu/TelegramScraper/telegram-ai-scraper/logs/cleanup_log_entries.sh" >> /home/ubuntu/TelegramScraper/telegram-ai-scraper/logs/cron_cleanup.log 2>&1
+5 0 * * * /bin/bash -c "cd /home/ubuntu/TelegramScraper && source telegram-ai-scraper_env/bin/activate && /home/ubuntu/TelegramScraper/telegram-ai-scraper/utils/cleanup_log_entries.sh" >> /home/ubuntu/TelegramScraper/telegram-ai-scraper/logs/cron_cleanup.log 2>&1
 
 # Explanation:
 # 5 0 * * *     = Every day at 12:05 AM UTC (5 minutes past midnight)
@@ -18,7 +18,7 @@
 # 2>&1          = Redirect stderr to stdout so errors are also logged
 
 # Alternative version without virtual environment activation (if not needed):
-# 5 0 * * * /home/ubuntu/TelegramScraper/telegram-ai-scraper/logs/cleanup_log_entries.sh >> /home/ubuntu/TelegramScraper/telegram-ai-scraper/logs/cron_cleanup.log 2>&1
+# 5 0 * * * /home/ubuntu/TelegramScraper/telegram-ai-scraper/utils/cleanup_log_entries.sh >> /home/ubuntu/TelegramScraper/telegram-ai-scraper/logs/cron_cleanup.log 2>&1
 
 # To verify crontab is working, check:
 # tail -f /home/ubuntu/TelegramScraper/telegram-ai-scraper/logs/cron_cleanup.log

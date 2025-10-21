@@ -3,6 +3,7 @@ config/config.json
 data/
 backups/
 pids/
+logs/
 *.sqlite3
 *.session
 *.session.lock
