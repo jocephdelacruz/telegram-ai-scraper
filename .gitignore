@@ -2,11 +2,11 @@ __pycache__/
 config/config.json
 data/
 backups/
-logs/
 pids/
 *.sqlite3
 *.session
 *.session.lock
 *.session-journal
 *.lock
+*.log
 flower
