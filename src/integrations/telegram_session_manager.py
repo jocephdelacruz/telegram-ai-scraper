@@ -161,8 +161,37 @@ class TelegramSessionManager:
             )
             
         except (PhoneCodeInvalidError, PhoneCodeExpiredError, SessionPasswordNeededError, AuthKeyUnregisteredError, SessionExpiredError, SessionRevokedError) as e:
-            # Session needs re-authentication
+            # Session needs re-authentication - handle gracefully to prevent phone logout
             self.logger.error(f"Session authentication required: {e}")
+            
+            # ENHANCED: Try graceful session renewal instead of complete failure
+            if isinstance(e, (SessionExpiredError, SessionRevokedError, AuthKeyUnregisteredError)):
+                self.logger.info("Attempting graceful session renewal to prevent phone logout...")
+                try:
+                    # Gracefully disconnect current session
+                    if self.client and self.client.is_connected():
+                        await self.client.disconnect()
+                    
+                    # Create a fresh client for renewal (without deleting session file)
+                    self.client = TelegramClient(self.session_file, self.api_id, self.api_hash)
+                    
+                    # This will prompt for SMS but should preserve phone session
+                    await self.client.start(phone=self.phone_number)
+                    
+                    # Test the renewed connection
+                    await self._test_connection()
+                    
+                    # Success - update state
+                    self.last_successful_connection = datetime.now()
+                    self.connection_attempts = 0
+                    
+                    self.logger.info("✅ Session renewed successfully without phone logout")
+                    return self.client
+                    
+                except Exception as renewal_error:
+                    self.logger.error(f"Session renewal failed: {renewal_error}")
+                    # Fall through to original error handling
+            
             await self._handle_session_expiry()
             raise TelegramSessionError(
                 f"Session expired or requires re-authentication: {type(e).__name__}. "

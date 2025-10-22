@@ -68,7 +68,7 @@ def show_session_status():
     
     return True
 
-async def refresh_and_test_session():
+async def test_session_validity():
     """Test if the current session is valid without requiring SMS"""
     print("🔍 Testing session validity...")
     
@@ -145,6 +145,98 @@ async def refresh_and_test_session():
             print("🧹 Session safety cleanup completed")
         except Exception as cleanup_error:
             print(f"⚠️  Warning: Session safety cleanup failed: {cleanup_error}")
+
+
+async def smart_session_renewal():
+    """
+    Smart session renewal that handles truly expired sessions without phone logout.
+    This is designed for cases where --test fails due to complete session expiry.
+    """
+    print("🧠 Smart Session Renewal (Expired Session Recovery)")
+    print("=" * 60)
+    
+    try:
+        # Smart approach: Test current session first
+        print("📋 Step 1: Testing current session validity...")
+        try:
+            test_result = await test_session_validity()
+            if test_result:
+                print("✅ Session is actually valid - no renewal needed!")
+                return True
+        except Exception:
+            print("⚠️  Session test failed - proceeding with smart renewal")
+        
+        # Load config
+        config_path = os.path.join(project_root, 'config', 'config.json')
+        config_handler = FileHandling(config_path)
+        config = config_handler.read_json()
+        
+        if not config:
+            print("❌ Failed to load configuration")
+            return False
+        
+        telegram_config = config.get('TELEGRAM_CONFIG', {})
+        if not all(key in telegram_config for key in ['API_ID', 'API_HASH', 'PHONE_NUMBER']):
+            print("❌ Telegram configuration incomplete")
+            return False
+        
+        # Step 2: Enhanced session renewal
+        print("\n📋 Step 2: Enhanced session renewal process...")
+        
+        # Create backup
+        session_file = os.path.join(project_root, 'telegram_session.session')
+        if os.path.exists(session_file):
+            try:
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                backup_file = os.path.join(project_root, f'telegram_session_smart_renewal_{timestamp}.session')
+                import shutil
+                shutil.copy2(session_file, backup_file)
+                print(f"💾 Session backed up to: {os.path.basename(backup_file)}")
+            except Exception as e:
+                print(f"⚠️  Warning: Could not backup session: {e}")
+        
+        # Smart renewal using TelegramScraper with enhanced session manager
+        print("🔄 Starting smart renewal (enhanced session manager)...")
+        telegram_scraper = TelegramScraper(
+            telegram_config['API_ID'],
+            telegram_config['API_HASH'], 
+            telegram_config['PHONE_NUMBER'],
+            'telegram_session'
+        )
+        
+        # The enhanced session manager should handle expired sessions gracefully
+        success = await telegram_scraper.start_client()
+        
+        if success:
+            try:
+                client = telegram_scraper.client
+                me = await client.get_me()
+                print(f"✅ Smart renewal SUCCESS - Connected as: {me.first_name} {me.last_name or ''}")
+                print(f"📱 Phone: {me.phone}")
+                print("🎉 Your phone should remain connected to Telegram!")
+                await telegram_scraper.stop_client()
+                return True
+            except Exception as e:
+                print(f"❌ Smart renewal test failed: {e}")
+                await telegram_scraper.stop_client()
+                return False
+        else:
+            print("❌ Smart renewal failed")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Smart renewal error: {e}")
+        return False
+    finally:
+        # Always clean up session safety records
+        try:
+            # Session safety check for testing
+            safety = SessionSafetyManager()
+            safety.cleanup_session_access()
+            print("🧹 Session safety cleanup completed")
+        except Exception as cleanup_error:
+            print(f"⚠️  Warning: Session safety cleanup failed: {cleanup_error}")
+
 
 async def authenticate_telegram(force_renewal=False):
     """Perform Telegram authentication with optional forced renewal"""
@@ -390,8 +482,9 @@ async def authenticate_telegram(force_renewal=False):
         # Always clean up session safety records
         try:
             safety.cleanup_session_access()
-        except:
-            pass
+            print("🧹 Session safety cleanup completed")
+        except Exception as cleanup_error:
+            print(f"⚠️  Warning: Session safety cleanup failed: {cleanup_error}")
 
 def safe_worker_stop():
     """Stop workers safely for session operations with proper session cleanup wait"""
@@ -511,7 +604,7 @@ Examples:
   python3 scripts/telegram_auth.py              # Original authentication (SMS required)
   python3 scripts/telegram_auth.py --status     # Check session status and age  
   python3 scripts/telegram_auth.py --test       # Test current session (no SMS)
-  python3 scripts/telegram_auth.py --refresh    # Refresh/Reauthenticate session (safe, no deletion)
+  python3 scripts/telegram_auth.py --smart-renew # Smart renewal for expired sessions (prevents phone logout)
   python3 scripts/telegram_auth.py --renew      # Safe session renewal (stops workers, SMS required)
   python3 scripts/telegram_auth.py --renew -y   # Renew without confirmation
   python3 scripts/telegram_auth.py --backup     # Backup current session
@@ -527,8 +620,8 @@ Session Safety:
                        help='Show current session status and exit')
     parser.add_argument('--test', action='store_true',
                        help='Test current session validity and exit (no SMS needed)')
-    parser.add_argument('--refresh', action='store_true',
-                       help='Refresh and reauthenticate session (safe, no session deletion)')
+    parser.add_argument('--smart-renew', action='store_true',
+                       help='Smart session renewal for expired sessions (prevents phone logout)')
     parser.add_argument('--renew', action='store_true',
                        help='Force session renewal (removes existing session, SMS required)')
     parser.add_argument('--safe-renew', action='store_true',
@@ -558,7 +651,7 @@ Session Safety:
             print("Testing Telegram session validity...")
         
         try:
-            result = asyncio.run(refresh_and_test_session())
+            result = asyncio.run(test_session_validity())
             if result:
                 if not args.quiet:
                     print("\n✅ Session is valid and working!")
@@ -572,24 +665,26 @@ Session Safety:
                 print(f"\n❌ Session test failed: {e}")
             return 1
     
-    # Handle session refresh using the test session validity function
-    if args.refresh:
+    # Handle smart session renewal for expired sessions
+    if args.smart_renew:
         if not args.quiet:
-            print("🔄 Refreshing / Reauthenticating Telegram session...")
+            print("🧠 Smart Session Renewal (Expired Session Recovery)...")
         
         try:
-            result = asyncio.run(refresh_and_test_session())
+            result = asyncio.run(smart_session_renewal())
             if result:
                 if not args.quiet:
-                    print("\n✅ Session refresh completed successfully!")
+                    print("\n✅ Smart session renewal completed successfully!")
+                    print("🎉 Your phone should remain connected to Telegram")
                 return 0
             else:
                 if not args.quiet:
-                    print("\n❌ Session refresh failed - check session validity")
+                    print("\n❌ Smart session renewal failed")
+                    print("💡 Last resort: python3 scripts/telegram_auth.py --renew")
                 return 1
         except Exception as e:
             if not args.quiet:
-                print(f"\n❌ Session refresh failed: {e}")
+                print(f"\n❌ Smart session renewal failed: {e}")
             return 1
     
     # Handle safe renewal workflow

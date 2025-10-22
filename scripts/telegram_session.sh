@@ -136,7 +136,14 @@ cmd_status() {
 cmd_test() {
     print_header "Testing Session Validity"
     
-    # First check session safety
+    # Check if session exists
+    if [ ! -f "telegram_session.session" ]; then
+        print_error "No session file found"
+        print_info "Use authentication instead: ./scripts/telegram_session auth"
+        return 1
+    fi
+    
+    # Check session safety
     print_status "Checking session safety before testing..."
     if ! run_python_safe "check_session_safety.py" >/dev/null 2>&1; then
         print_error "Session safety check failed!"
@@ -244,9 +251,9 @@ cmd_auth() {
     return $exit_code
 }
 
-# Command: refresh  
-cmd_refresh() {
-    print_header "Session Refresh with Redis Cleanup"
+# Command: smart-renew
+cmd_smart_renew() {
+    print_header "Smart Session Renewal (Expired Session Recovery)"
     
     # Check if session exists
     if [ ! -f "telegram_session.session" ]; then
@@ -274,34 +281,29 @@ cmd_refresh() {
     fi
     
     # Check session safety
-    print_status "Checking session safety before refresh..."
+    print_status "Checking session safety before smart renewal..."
     if ! run_python_safe "check_session_safety.py" >/dev/null 2>&1; then
-        print_error "Cannot refresh - session conflicts detected!"
-        print_error "Stop all workers before refresh"
+        print_error "Cannot perform smart renewal - session conflicts detected!"
+        print_error "Stop all workers before renewal"
         print_info "Run: ./scripts/deploy_celery.sh stop"
         return 1
     fi
     
-    print_success "Environment is safe for refresh"
+    print_success "Environment is safe for smart renewal"
     echo ""
     
-    run_python_safe "telegram_auth.py" --refresh
+    run_python_safe "telegram_auth.py" --smart-renew
     local exit_code=$?
     
     echo ""
     if [ $exit_code -eq 0 ]; then
-        print_success "Session refresh completed successfully!"
-        print_info "Session validated and Redis caches cleared"
-        
-        # Clear any remaining dangerous tasks after refresh
-        print_status "Final cleanup of any remaining queued tasks..."
-        for queue in "telegram_fetch" "telegram_processing"; do
-            redis-cli del "$queue" >/dev/null 2>&1
-        done
-        print_success "Queue cleanup completed"
+        print_success "Smart session renewal completed successfully!"
+        print_info "Session renewed without phone logout"
+        print_info "Your phone should remain connected to Telegram"
     else
-        print_error "Session refresh failed"
-        print_info "Check session status: ./scripts/telegram_session status"
+        print_error "Smart session renewal failed"
+        print_warning "Your session may be completely expired"
+        print_info "Last resort: ./scripts/telegram_session renew"
     fi
     
     return $exit_code
@@ -553,7 +555,7 @@ cmd_help() {
     echo ""
     echo "  🔐 AUTHENTICATION & MANAGEMENT:"
     echo "    auth                 Authenticate new session (interactive)"
-    echo "    refresh              Refresh session + clear Redis caches (safe, no deletion)"
+    echo "    smart-renew          Smart renewal for expired sessions (prevents phone logout)"
     echo "    renew                Renew existing session (safe workflow)"
     echo ""
     echo "  💾 BACKUP & RESTORE:"
@@ -577,10 +579,10 @@ cmd_help() {
     echo "  # Authenticate new session"
     echo "  ./scripts/telegram_session.sh auth"
     echo ""
-    echo "  # Refresh session and clear caches (safe, no deletion)"
-    echo "  ./scripts/telegram_session.sh refresh"
+    echo "  # Smart renewal for expired sessions (prevents phone logout)"
+    echo "  ./scripts/telegram_session.sh smart-renew"
     echo ""
-    echo "  # Renew existing session safely"
+    echo "  # Force session renewal (deletes session file)"
     echo "  ./scripts/telegram_session.sh renew"
     echo ""
     echo "  # Check for session conflicts"
@@ -644,8 +646,11 @@ main() {
         "renew")
             cmd_renew "$@"
             ;;
-        "refresh")
-            cmd_refresh "$@"
+        "smart-renew"|"smart")
+            cmd_smart_renew "$@"
+            ;;
+        "renew")
+            cmd_renew "$@"
             ;;
         "backup")
             cmd_backup "$@"
@@ -668,7 +673,7 @@ main() {
         *)
             print_error "Unknown command: $command"
             echo ""
-            print_info "Available commands: status, test, auth, refresh, renew, backup, restore, safety-check, clear-queues, diagnostics, help"
+            print_info "Available commands: status, test, auth, smart-renew, renew, backup, restore, safety-check, clear-queues, diagnostics, help"
             echo ""
             print_info "Use './scripts/telegram_session help' for detailed usage information"
             return 1
