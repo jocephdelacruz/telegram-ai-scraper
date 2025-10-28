@@ -7,7 +7,7 @@ including automatic recovery, rate limit handling, and session corruption detect
 
 import os
 import asyncio
-import logging
+import sys
 import fcntl
 import time
 from datetime import datetime, timedelta
@@ -23,6 +23,16 @@ from telethon.errors import (
     SessionExpiredError,
     SessionRevokedError
 )
+
+# Add project root to path for imports
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+from src.core import log_handling as lh
+
+# Setup project logging (consistent with telegram_utils.py)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+LOG_FILE = os.path.join(PROJECT_ROOT, "logs", "telegram.log")
+LOG_TZ = "Asia/Manila"
+LOGGER = lh.LogHandling(LOG_FILE, LOG_TZ)
 
 
 class TelegramRateLimitError(Exception):
@@ -74,16 +84,8 @@ class TelegramSessionManager:
         self._session_lock = None
         self._lock_file_path = f"{session_file}.lock"
         
-        # Setup logging
-        self.logger = logging.getLogger(__name__)
-        if not self.logger.handlers:
-            handler = logging.StreamHandler()
-            formatter = logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-            )
-            handler.setFormatter(formatter)
-            self.logger.addHandler(handler)
-            self.logger.setLevel(logging.INFO)
+        # Session manager initialized - use LOGGER for consistency
+        LOGGER.writeLog("TelegramSessionManager initialized with advanced session management")
     
     async def get_client(self, force_reconnect=False):
         """
@@ -116,7 +118,7 @@ class TelegramSessionManager:
                 await self._test_connection()
                 return self.client
             except Exception as e:
-                self.logger.warning(f"Existing client failed test: {e}")
+                LOGGER.writeLog(f"Existing client failed test: {e}")
                 await self._cleanup_client()
         
         # Create new client
@@ -132,7 +134,7 @@ class TelegramSessionManager:
         try:
             self.client = TelegramClient(self.session_file, self.api_id, self.api_hash)
             
-            self.logger.info(f"Attempting to start Telegram client (attempt {self.connection_attempts}) with session lock")
+            LOGGER.writeLog(f"Attempting to start Telegram client (attempt {self.connection_attempts}) with session lock")
             
             # Start the client with phone authentication
             await self.client.start(phone=self.phone_number)
@@ -145,7 +147,7 @@ class TelegramSessionManager:
             self.rate_limit_until = None
             self.connection_attempts = 0
             
-            self.logger.info("Telegram client started successfully with session protection")
+            LOGGER.writeLog("Telegram client started successfully with session protection")
             return self.client
             
         except FloodWaitError as e:
@@ -153,7 +155,7 @@ class TelegramSessionManager:
             wait_time = e.seconds
             self.rate_limit_until = datetime.now() + timedelta(seconds=wait_time)
             
-            self.logger.error(f"Rate limited: must wait {wait_time} seconds until {self.rate_limit_until}")
+            LOGGER.writeLog(f"🚫 Rate limited: must wait {wait_time} seconds until {self.rate_limit_until}")
             
             await self._cleanup_client()
             raise TelegramRateLimitError(
@@ -162,11 +164,11 @@ class TelegramSessionManager:
             
         except (PhoneCodeInvalidError, PhoneCodeExpiredError, SessionPasswordNeededError, AuthKeyUnregisteredError, SessionExpiredError, SessionRevokedError) as e:
             # Session needs re-authentication - handle gracefully to prevent phone logout
-            self.logger.error(f"Session authentication required: {e}")
+            LOGGER.writeLog(f"🔐 Session authentication required: {e}")
             
             # ENHANCED: Try graceful session renewal instead of complete failure
             if isinstance(e, (SessionExpiredError, SessionRevokedError, AuthKeyUnregisteredError)):
-                self.logger.info("Attempting graceful session renewal to prevent phone logout...")
+                LOGGER.writeLog("Attempting graceful session renewal to prevent phone logout...")
                 try:
                     # Gracefully disconnect current session
                     if self.client and self.client.is_connected():
@@ -185,11 +187,11 @@ class TelegramSessionManager:
                     self.last_successful_connection = datetime.now()
                     self.connection_attempts = 0
                     
-                    self.logger.info("✅ Session renewed successfully without phone logout")
+                    LOGGER.writeLog("✅ Session renewed successfully without phone logout")
                     return self.client
                     
                 except Exception as renewal_error:
-                    self.logger.error(f"Session renewal failed: {renewal_error}")
+                    LOGGER.writeLog(f"❌ Session renewal failed: {renewal_error}")
                     # Fall through to original error handling
             
             await self._handle_session_expiry()
@@ -200,7 +202,7 @@ class TelegramSessionManager:
             
         except (ApiIdInvalidError, PhoneNumberInvalidError) as e:
             # Configuration errors
-            self.logger.error(f"Configuration error: {e}")
+            LOGGER.writeLog(f"🚨 Configuration error: {e}")
             await self._cleanup_client()
             raise TelegramAuthError(
                 f"Invalid API credentials: {type(e).__name__}. "
@@ -209,7 +211,7 @@ class TelegramSessionManager:
             
         except Exception as e:
             error_msg = str(e)
-            self.logger.error(f"Unexpected error during client creation: {error_msg}")
+            LOGGER.writeLog(f"❌ Unexpected error during client creation: {error_msg}")
             
             if "EOF when reading a line" in error_msg:
                 # Session file might be corrupted
@@ -229,7 +231,7 @@ class TelegramSessionManager:
         
         except KeyboardInterrupt:
             # Handle user interruption (Ctrl+C)
-            self.logger.warning("Client creation interrupted by user")
+            LOGGER.writeLog("⚠️ Client creation interrupted by user")
             await self._cleanup_client()
             raise TelegramAuthError("Authentication interrupted by user")
             
@@ -248,7 +250,7 @@ class TelegramSessionManager:
         if not me:
             raise Exception("Failed to retrieve user information")
         
-        self.logger.debug(f"Connection test successful - connected as {me.first_name}")
+        LOGGER.writeLog(f"✅ Connection test successful - connected as {me.first_name}")
     
     async def _handle_corrupted_session(self):
         """Handle corrupted session by backing up and clearing"""
@@ -259,15 +261,15 @@ class TelegramSessionManager:
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 backup_name = f"{self.session_file}_corrupted_{timestamp}.session"
                 os.rename(session_path, backup_name)
-                self.logger.info(f"Backed up corrupted session to {backup_name}")
+                LOGGER.writeLog(f"📁 Backed up corrupted session to {backup_name}")
         except Exception as e:
-            self.logger.error(f"Failed to backup corrupted session: {e}")
+            LOGGER.writeLog(f"❌ Failed to backup corrupted session: {e}")
         
         await self._cleanup_client()
     
     async def _handle_session_expiry(self):
         """Handle expired session"""
-        self.logger.info("Session expired - cleanup required")
+        LOGGER.writeLog("🔐 Session expired - cleanup required")
         await self._cleanup_client()
     
     async def _cleanup_client(self):
@@ -276,11 +278,11 @@ class TelegramSessionManager:
             try:
                 # Give the client more time to disconnect gracefully
                 await asyncio.wait_for(self.client.disconnect(), timeout=10)
-                self.logger.debug("Client disconnected gracefully")
+                LOGGER.writeLog("🔌 Client disconnected gracefully")
             except asyncio.TimeoutError:
-                self.logger.warning("Client disconnect timed out")
+                LOGGER.writeLog("⚠️ Client disconnect timed out")
             except Exception as e:
-                self.logger.warning(f"Error during client disconnect: {e}")
+                LOGGER.writeLog(f"⚠️ Error during client disconnect: {e}")
             finally:
                 self.client = None
         
@@ -304,17 +306,17 @@ class TelegramSessionManager:
             while wait_time < max_wait:
                 try:
                     fcntl.flock(self._session_lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    self.logger.debug(f"Session lock acquired after {wait_time}s")
+                    LOGGER.writeLog(f"🔒 Session lock acquired after {wait_time}s")
                     return
                 except BlockingIOError:
                     # Lock is held by another process
                     if wait_time == 0:
-                        self.logger.warning("Session lock held by another process, waiting...")
+                        LOGGER.writeLog("⏳ Session lock held by another process, waiting...")
                     await asyncio.sleep(1)
                     wait_time += 1
             
             # Timeout reached
-            self.logger.error(f"Failed to acquire session lock after {max_wait}s")
+            LOGGER.writeLog(f"❌ Failed to acquire session lock after {max_wait}s")
             raise Exception("Session lock timeout - another process may be using the session")
             
         except Exception as e:
@@ -332,9 +334,9 @@ class TelegramSessionManager:
             try:
                 fcntl.flock(self._session_lock.fileno(), fcntl.LOCK_UN)
                 self._session_lock.close()
-                self.logger.debug("Session lock released")
+                LOGGER.writeLog("🔓 Session lock released")
             except Exception as e:
-                self.logger.warning(f"Error releasing session lock: {e}")
+                LOGGER.writeLog(f"⚠️ Error releasing session lock: {e}")
             finally:
                 self._session_lock = None
 
@@ -342,7 +344,7 @@ class TelegramSessionManager:
         """Properly close the session manager with lock cleanup"""
         await self._cleanup_client()
         await self._release_session_lock()
-        self.logger.info("Telegram session manager closed with lock cleanup")
+        LOGGER.writeLog("🔚 Telegram session manager closed with lock cleanup")
     
     def is_rate_limited(self):
         """Check if currently rate limited"""
