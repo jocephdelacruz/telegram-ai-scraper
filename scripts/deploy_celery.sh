@@ -117,8 +117,14 @@ check_prerequisites() {
 start_worker() {
     local worker_name=$1
     local queues=$2
-    local concurrency=${3:-1}
+    local concurrency=$3
     local log_level=${4:-$DEFAULT_LOG_LEVEL}
+    
+    # Don't start worker if concurrency is 0 or empty
+    if [ -z "$concurrency" ] || [ "$concurrency" -eq 0 ]; then
+        print_warning "Skipping $worker_name worker (concurrency set to 0)"
+        return 0
+    fi
     local pidfile="$PID_DIR/celery_${worker_name}.pid"
     local logfile="$LOG_DIR/celery_${worker_name}.log"
 
@@ -421,7 +427,10 @@ start_all_workers() {
         split)
             start_worker "main_processor" "telegram_processing,telegram_fetch" $MAIN_PROCESSOR_WORKERS || return 1
             start_worker "data_services" "sharepoint,backup,notifications" $DATA_SERVICES_WORKERS || return 1
-            start_worker "maintenance" "maintenance,monitoring" $MAINTENANCE_SPLIT_WORKERS || return 1
+            # Only start maintenance worker if MAINTENANCE_SPLIT_WORKERS > 0
+            if [ "$MAINTENANCE_SPLIT_WORKERS" -gt 0 ]; then
+                start_worker "maintenance" "maintenance,monitoring" $MAINTENANCE_SPLIT_WORKERS || return 1
+            fi
             ;;
         original)
             start_worker "main_processor" "telegram_processing,telegram_fetch" $MAIN_PROCESSOR_WORKERS || return 1
@@ -540,7 +549,11 @@ except Exception as e:
                 split)
                     echo "- Main Processor: $MAIN_PROCESSOR_WORKERS workers (telegram_processing,telegram_fetch)"
                     echo "- Data Services Worker: $DATA_SERVICES_WORKERS worker (sharepoint,backup,notifications)"
-                    echo "- Maintenance Worker: $MAINTENANCE_SPLIT_WORKERS worker (maintenance,monitoring)"
+                    if [ "$MAINTENANCE_SPLIT_WORKERS" -gt 0 ]; then
+                        echo "- Maintenance Worker: $MAINTENANCE_SPLIT_WORKERS worker (maintenance,monitoring)"
+                    else
+                        echo "- Maintenance Worker: DISABLED (set MAINTENANCE_SPLIT_WORKERS > 0 to enable)"
+                    fi
                     ;;
                 original)
                     echo "- Telegram Processing/Fetch Workers: $MAIN_PROCESSOR_WORKERS workers"
