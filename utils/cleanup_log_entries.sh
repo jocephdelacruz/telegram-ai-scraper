@@ -6,7 +6,7 @@
 
 # Configuration
 LOGS_DIR="/home/ubuntu/TelegramScraper/telegram-ai-scraper/logs"
-DAYS_TO_KEEP=4
+DAYS_TO_KEEP=3
 TEMP_DIR="/tmp/log_cleanup_$$"
 SCRIPT_LOG="$LOGS_DIR/cleanup_log_entries.log"
 
