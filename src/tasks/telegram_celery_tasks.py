@@ -783,8 +783,8 @@ async def fetch_messages_async(telegram_scraper, all_channels, config, cutoff_ti
                 channel = channel_info['channel']
                 country_code = channel_info['country_code']
                 
-                # Get recent messages with age and duplicate filtering applied
-                messages = await telegram_scraper.get_channel_messages(
+                # Get recent messages with efficient ID tracking and age filtering
+                messages = await telegram_scraper.get_channel_messages_efficiently(
                     channel, 
                     limit=message_limit, 
                     cutoff_time=cutoff_time,

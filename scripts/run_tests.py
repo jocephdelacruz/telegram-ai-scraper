@@ -699,6 +699,26 @@ class TestRunner:
             self.results['failed'] += 1
             if status != 'SKIP':
                 self.results['errors'].append(f"Message Fetch Test: {details}")
+        
+        # Test comprehensive Telegram message fetching functions
+        status, details = self.run_python_test("test_telegram_message_fetching.py", timeout=90)
+        self.print_result("Telegram Message Fetching Suite", status, details if status != 'PASS' else None)
+        
+        if status == 'PASS':
+            self.results['passed'] += 1
+            # Message fetching test includes multiple sub-tests
+            print("   ✅ Basic Message Fetching")
+            print("   ✅ Efficient Message Fetching with ID Tracking")
+            print("   ✅ Efficient Message Fetching Fallback")
+            print("   ✅ Age-based Message Filtering")
+            print("   ✅ Redis Duplicate Detection")
+            print("   ✅ Safety Limits Enforcement")
+            print("   ✅ Error Handling")
+        elif status == 'SKIP':
+            self.results['skipped'] += 1
+        else:
+            self.results['failed'] += 1
+            self.results['errors'].append(f"Telegram Message Fetching Suite: {details}")
                 
     def generate_report(self):
         """Generate final test report"""

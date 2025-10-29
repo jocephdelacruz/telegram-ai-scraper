@@ -662,6 +662,178 @@ class TelegramScraper:
             return []
 
 
+    async def get_channel_messages_efficiently(self, channel_username, limit=10, cutoff_time=None, redis_client=None, log_found_messages=True):
+        """
+        Efficiently get recent messages from a channel with smart ID tracking and safety limits.
+        
+        This method combines the best of both get_channel_messages and get_channel_messages_with_tracking:
+        - Uses min_id tracking when available to fetch only newer messages
+        - Falls back to time-based filtering when no tracking data exists
+        - Always respects safety limits to prevent API abuse
+        - Prevents phone logout by limiting message fetching
+        
+        Args:
+            channel_username: Channel username (e.g., @channelname)
+            limit: Maximum number of messages to retrieve (default 10, max 50 for safety)
+            cutoff_time: Only return messages newer than this datetime (optional)
+            redis_client: Redis client for duplicate detection and ID tracking (optional)
+            log_found_messages: Whether to log found messages (default True)
+            
+        Returns:
+            List of message dictionaries (filtered for new/valid messages)
+        """
+        try:
+            # Safety limit to prevent API abuse and phone logout
+            MAX_SAFE_LIMIT = 50
+            safe_limit = min(limit, MAX_SAFE_LIMIT)
+            
+            # Get channel entity
+            entity = await self.get_channel_entity(channel_username)
+            if not entity:
+                LOGGER.writeLog(f"Could not get entity for channel: {channel_username}")
+                return []
+
+            client = await self._ensure_client()
+            messages = []
+            message_count = 0
+            new_messages = 0
+            duplicate_count = 0
+            old_messages = 0
+            
+            # Step 1: Try to get last processed message ID for efficient fetching (checks Redis + CSV fallback)
+            last_processed_id = None
+            try:
+                # Try to get from our tracking system (Redis first, then CSV fallback)
+                last_processed_id = await self._get_last_processed_message_id(
+                    channel_username, None, redis_client
+                )
+                if last_processed_id:
+                    LOGGER.writeLog(f"🔍 Found last processed ID for {channel_username}: {last_processed_id}")
+            except Exception as e:
+                LOGGER.writeLog(f"Could not get last processed ID for {channel_username}: {e}")
+            
+            # Step 2: Choose fetching strategy based on available tracking data
+            if last_processed_id:
+                # EFFICIENT APPROACH: Use min_id to fetch only newer messages
+                LOGGER.writeLog(f"📥 Efficiently fetching max {safe_limit} messages from {channel_username} newer than ID {last_processed_id}")
+                
+                # Calculate absolute age cutoff (4 hours max)
+                age_cutoff = datetime.now(timezone.utc) - timedelta(seconds=MAX_MESSAGE_AGE_SECONDS)
+                
+                async for message in client.iter_messages(entity, min_id=last_processed_id, limit=safe_limit):
+                    message_count += 1
+                    
+                    # Apply absolute age filter (4 hours max) - more reliable than cutoff_time
+                    if message.date < age_cutoff:
+                        old_messages += 1
+                        continue
+                    
+                    # Parse the message
+                    message_data = await self.parse_message(message, channel_username)
+                    if not message_data:
+                        continue
+                    
+                    # Check for duplicates using Redis if available
+                    if redis_client:
+                        message_id = message_data.get('Message_ID', '')
+                        duplicate_key = f"processed_msg:{channel_username}:{message_id}"
+                        try:
+                            if redis_client.exists(duplicate_key):
+                                duplicate_count += 1
+                                continue
+                        except Exception as redis_error:
+                            LOGGER.writeLog(f"Redis duplicate check failed: {redis_error}")
+                    
+                    # Message is new and valid - add it
+                    messages.append(message_data)
+                    new_messages += 1
+                    
+                    if log_found_messages:
+                        self._log_new_message(message_data, channel_username)
+                        
+            else:
+                # FALLBACK APPROACH: Use traditional limit + time filtering (same as get_channel_messages)
+                LOGGER.writeLog(f"📥 Fetching max {safe_limit} messages from {channel_username} (no tracking data, using time-based filtering)")
+                
+                async for message in client.iter_messages(entity, limit=safe_limit):
+                    message_count += 1
+                    
+                    # Apply cutoff_time filter if provided
+                    if cutoff_time and message.date < cutoff_time:
+                        old_messages += 1
+                        continue
+                    
+                    # Parse the message
+                    message_data = await self.parse_message(message, channel_username)
+                    if not message_data:
+                        continue
+                    
+                    # Check for duplicates using Redis if available
+                    if redis_client:
+                        message_id = message_data.get('Message_ID', '')
+                        duplicate_key = f"processed_msg:{channel_username}:{message_id}"
+                        try:
+                            if redis_client.exists(duplicate_key):
+                                duplicate_count += 1
+                                continue
+                        except Exception as redis_error:
+                            LOGGER.writeLog(f"Redis duplicate check failed: {redis_error}")
+                    
+                    # Message is new and valid - add it
+                    messages.append(message_data)
+                    new_messages += 1
+                    
+                    if log_found_messages:
+                        self._log_new_message(message_data, channel_username)
+            
+            # Step 3: Update Redis tracking with the newest message ID
+            if messages and redis_client:
+                try:
+                    await self._update_last_processed_id(channel_username, messages, redis_client)
+                except Exception as e:
+                    LOGGER.writeLog(f"Failed to update Redis tracking for {channel_username}: {e}")
+            
+            # Step 4: Log summary
+            strategy = "ID-based" if last_processed_id else "time-based"
+            total_checked = message_count
+            
+            if new_messages > 0:
+                LOGGER.writeLog(
+                    f"✅ Efficiently retrieved {new_messages} NEW messages from {channel_username} "
+                    f"(strategy: {strategy}, checked {total_checked}, skipped {duplicate_count} duplicates, {old_messages} too old)"
+                )
+            else:
+                if total_checked > 0:
+                    LOGGER.writeLog(f"📭 No new messages from {channel_username} (strategy: {strategy}, checked {total_checked}, {duplicate_count} duplicates, {old_messages} too old)")
+                else:
+                    LOGGER.writeLog(f"📭 No messages found in {channel_username} (strategy: {strategy})")
+            
+            return messages
+            
+        except Exception as e:
+            LOGGER.writeLog(f"❌ Error in efficient message fetch from {channel_username}: {e}")
+            self._error_count += 1
+            
+            # Send critical exception to admin for message retrieval failures
+            if self._error_count % 10 == 0:  # Every 10th error
+                try:
+                    from .teams_utils import send_critical_exception
+                    send_critical_exception(
+                        "TelegramMessageFetchError",
+                        str(e),
+                        "TelegramScraper.get_channel_messages_efficiently",
+                        additional_context={
+                            "channel": channel_username,
+                            "error_count": self._error_count,
+                            "limit": limit
+                        }
+                    )
+                except Exception as admin_error:
+                    LOGGER.writeLog(f"Failed to send message fetch error to admin: {admin_error}")
+            
+            return []
+
+
     async def get_channel_messages_with_tracking(self, channel_username, config=None, redis_client=None, log_found_messages=True):
         """
         I'M NO LONGER USING THIS METHOD SINCE IT CAUSES THE TELEGRAM SESSION TO EXPIRE, PARTICULARLY WHEN THE PROJECT WAS NOT RUN FOR A WHILE.
