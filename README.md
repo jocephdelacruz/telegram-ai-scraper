@@ -773,6 +773,10 @@ telegram-ai-scraper/
 │   └── celery_*.log             # Various Celery worker logs
 ├── data/                          # Data storage directory
 ├── pids/                          # Process ID files
+├── utils/                         # Utility scripts and maintenance tools
+│   ├── cleanup_log_entries.sh   # Daily log cleanup (removes entries older than N days)
+│   ├── cleanup_csv_entries.sh   # Daily CSV cleanup (removes old CSV entries)
+│   └── crontab_entries.txt      # Crontab configuration for automated maintenance
 └── telegram-ai-scraper_env/      # Python virtual environment
 ```
 
@@ -882,6 +886,59 @@ The system includes comprehensive error handling:
 - Configuration errors
 
 All errors are logged and, when possible, reported to Teams as system alerts.
+
+## Automated Maintenance
+
+The system includes automated maintenance utilities to manage log and data retention:
+
+### Log Cleanup (`cleanup_log_entries.sh`)
+- **Purpose**: Automatically removes old log entries to prevent disk space issues
+- **Schedule**: Daily at 12:05 AM UTC
+- **Retention**: Configurable (default: 3 days) via `DAYS_TO_KEEP` variable
+- **Features**:
+  - Preserves log files, only removes old entries
+  - Atomic operations to prevent conflicts with running processes
+  - File locking to avoid corruption during concurrent access
+  - Comprehensive logging of cleanup operations
+  - Processes all `.log` files in the `logs/` directory
+
+### CSV Data Cleanup (`cleanup_csv_entries.sh`)
+- **Purpose**: Automatically removes old CSV data entries to manage storage
+- **Schedule**: Daily at 12:20 AM UTC
+- **Retention**: Configurable (default: 7 days) via `DAYS_TO_KEEP` variable
+- **Features**:
+  - Uses the `Date` field in CSV files to determine entry age
+  - Atomic file operations with lock files to prevent data corruption
+  - Safe concurrent operation with active CSV writing processes
+  - Preserves CSV structure and headers
+  - Processes all `.csv` files in the `data/` directory
+
+### Automated Scheduling
+Add these entries to your crontab to enable automated maintenance:
+
+```bash
+# Install crontab entries
+crontab -e
+
+# Add these lines (or use the provided crontab_entries.txt):
+5 0 * * * /bin/bash -c "cd /home/ubuntu/TelegramScraper && source telegram-ai-scraper_env/bin/activate && /home/ubuntu/TelegramScraper/telegram-ai-scraper/utils/cleanup_log_entries.sh" >> /home/ubuntu/TelegramScraper/telegram-ai-scraper/logs/cron_cleanup.log 2>&1
+20 0 * * * /bin/bash -c "cd /home/ubuntu/TelegramScraper && source telegram-ai-scraper_env/bin/activate && /home/ubuntu/TelegramScraper/telegram-ai-scraper/utils/cleanup_csv_entries.sh" >> /home/ubuntu/TelegramScraper/telegram-ai-scraper/logs/cron_cleanup.log 2>&1
+```
+
+### Manual Execution
+You can also run the cleanup scripts manually:
+
+```bash
+# Clean log entries
+./utils/cleanup_log_entries.sh
+
+# Clean CSV entries  
+./utils/cleanup_csv_entries.sh
+
+# Check cleanup logs
+tail -f logs/cleanup_log_entries.log
+tail -f logs/cleanup_csv_entries.log
+```
 
 ## Performance and Scaling
 

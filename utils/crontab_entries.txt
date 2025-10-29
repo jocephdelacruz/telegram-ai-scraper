@@ -1,12 +1,14 @@
-# Crontab Entry for Log Cleanup Script
-# This entry runs the log cleanup script daily at 12:05 AM UTC
+# Crontab Entries for different utility scripts
 # 
-# To install this crontab entry, run:
+# To install these crontab entries, run:
 # crontab -e
-# 
-# Then add this line to your crontab:
+# Then add these lines to your crontab:
 
+# This entry runs the log cleanup script daily at 12:05 AM UTC
 5 0 * * * /bin/bash -c "cd /home/ubuntu/TelegramScraper && source telegram-ai-scraper_env/bin/activate && /home/ubuntu/TelegramScraper/telegram-ai-scraper/utils/cleanup_log_entries.sh" >> /home/ubuntu/TelegramScraper/telegram-ai-scraper/logs/cron_cleanup.log 2>&1
+
+# This entry runs the CSV cleanup script daily at 12:20 AM UTC  
+20 0 * * * /bin/bash -c "cd /home/ubuntu/TelegramScraper && source telegram-ai-scraper_env/bin/activate && /home/ubuntu/TelegramScraper/telegram-ai-scraper/utils/cleanup_csv_entries.sh" >> /home/ubuntu/TelegramScraper/telegram-ai-scraper/logs/cron_cleanup.log 2>&1
 
 # Explanation:
 # 5 0 * * *     = Every day at 12:05 AM UTC (5 minutes past midnight)

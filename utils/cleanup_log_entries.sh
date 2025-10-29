@@ -52,10 +52,11 @@ timestamp_to_epoch() {
     date -d "$formatted_date" +%s 2>/dev/null
 }
 
-# Function to clean a single log file
+# Function to clean a single log file with atomic operations
 clean_log_file() {
     local log_file="$1"
     local temp_file="$TEMP_DIR/$(basename "$log_file")"
+    local lock_file="${log_file}.cleanup_lock"
     local cutoff_epoch=$(date -d "$DAYS_TO_KEEP days ago" +%s)
     local original_lines=0
     local kept_lines=0
@@ -65,6 +66,26 @@ clean_log_file() {
     if [[ ! -f "$log_file" ]] || [[ ! -s "$log_file" ]]; then
         return 0
     fi
+    
+    # Attempt to acquire lock with timeout (prevent concurrent access)
+    local lock_timeout=30
+    local lock_acquired=false
+    
+    for ((i=0; i<lock_timeout; i++)); do
+        if (set -C; echo $$ > "$lock_file") 2>/dev/null; then
+            lock_acquired=true
+            break
+        fi
+        sleep 1
+    done
+    
+    if [[ "$lock_acquired" != true ]]; then
+        log_message "${YELLOW}⚠️  Could not acquire lock for $(basename "$log_file") after ${lock_timeout}s, skipping${NC}"
+        return 1
+    fi
+    
+    # Ensure lock is released on exit
+    trap "rm -f '$lock_file'" EXIT
     
     original_lines=$(wc -l < "$log_file")
     
@@ -93,17 +114,28 @@ clean_log_file() {
         fi
     done < "$log_file"
     
-    # Replace original file with cleaned version if temp file exists and has content
+    # Atomically replace original file with cleaned version
     if [[ -f "$temp_file" ]] && [[ -s "$temp_file" ]]; then
-        mv "$temp_file" "$log_file"
-        log_message "${GREEN}✅ Cleaned $(basename "$log_file"): ${original_lines} → ${kept_lines} lines (removed ${removed_lines})${NC}"
+        if mv "$temp_file" "$log_file"; then
+            log_message "${GREEN}✅ Cleaned $(basename "$log_file"): ${original_lines} → ${kept_lines} lines (removed ${removed_lines})${NC}"
+        else
+            log_message "${RED}❌ Failed to update $(basename "$log_file")${NC}"
+            rm -f "$temp_file"
+        fi
     elif [[ -f "$temp_file" ]]; then
         # Temp file exists but is empty - all entries were old
-        mv "$temp_file" "$log_file"
-        log_message "${YELLOW}⚠️  All entries removed from $(basename "$log_file") (${original_lines} lines removed)${NC}"
+        if mv "$temp_file" "$log_file"; then
+            log_message "${YELLOW}⚠️  All entries removed from $(basename "$log_file") (${original_lines} lines removed)${NC}"
+        else
+            log_message "${RED}❌ Failed to update $(basename "$log_file")${NC}"
+            rm -f "$temp_file"
+        fi
     else
         log_message "${BLUE}ℹ️  No changes needed for $(basename "$log_file")${NC}"
     fi
+    
+    # Release lock
+    rm -f "$lock_file"
 }
 
 # Main execution
@@ -113,8 +145,8 @@ main() {
     # Create temporary directory
     mkdir -p "$TEMP_DIR"
     
-    # Cleanup trap
-    trap "rm -rf '$TEMP_DIR'" EXIT
+    # Cleanup trap (also clean up any stale locks)
+    trap "rm -rf '$TEMP_DIR'; find '$LOGS_DIR' -name '*.cleanup_lock' -mmin +60 -delete 2>/dev/null" EXIT
     
     # Get cutoff date for logging
     local cutoff_date=$(date -d "$DAYS_TO_KEEP days ago" '+%Y-%m-%d %H:%M:%S')
@@ -140,8 +172,9 @@ main() {
     
     log_message "${GREEN}✅ Cleanup completed: processed ${processed_files}/${total_files} log files${NC}"
     
-    # Clean up temp directory
+    # Clean up temp directory and any stale locks
     rm -rf "$TEMP_DIR"
+    find "$LOGS_DIR" -name "*.cleanup_lock" -mmin +60 -delete 2>/dev/null || true
 }
 
 # Check if running as script (not sourced)
