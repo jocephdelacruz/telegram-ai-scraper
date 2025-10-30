@@ -913,6 +913,22 @@ The system includes automated maintenance utilities to manage log and data reten
   - Preserves CSV structure and headers
   - Processes all `.csv` files in the `data/` directory
 
+### Comprehensive System Cleanup (Celery Beat)
+- **Purpose**: Consolidated cleanup of SharePoint, Redis, and Celery task data
+- **Schedule**: Daily at 2:00 AM UTC via Celery Beat (automated)
+- **Retention**: Configurable via `DATA_RETENTION_DAYS` in `config.json` (default: 3 days)
+- **Components**:
+  - **SharePoint Cleanup**: Removes old entries from Excel files
+  - **Redis Cleanup**: Cleans old task results and cached data  
+  - **Celery Task Cleanup**: Removes expired task results
+- **SharePoint Features**:
+  - **Row Deletion**: Deletes entire rows (not just content) to prevent blank spaces
+  - **Conflict Prevention**: Uses SharePoint session management to avoid write conflicts
+  - **Multi-Country Support**: Automatically processes all enabled countries/files
+  - **Atomic Operations**: Safe concurrent operation with active SharePoint writes
+  - **Smart Date Handling**: Handles various Excel date formats automatically
+  - **Retry Logic**: Built-in retry mechanism with exponential backoff
+
 ### Automated Scheduling
 Add these entries to your crontab to enable automated maintenance:
 
@@ -923,6 +939,9 @@ crontab -e
 # Add these lines (or use the provided crontab_entries.txt):
 5 0 * * * /bin/bash -c "cd /home/ubuntu/TelegramScraper && source telegram-ai-scraper_env/bin/activate && /home/ubuntu/TelegramScraper/telegram-ai-scraper/utils/cleanup_log_entries.sh" >> /home/ubuntu/TelegramScraper/telegram-ai-scraper/logs/cron_cleanup.log 2>&1
 20 0 * * * /bin/bash -c "cd /home/ubuntu/TelegramScraper && source telegram-ai-scraper_env/bin/activate && /home/ubuntu/TelegramScraper/telegram-ai-scraper/utils/cleanup_csv_entries.sh" >> /home/ubuntu/TelegramScraper/telegram-ai-scraper/logs/cron_cleanup.log 2>&1
+
+# Comprehensive system cleanup runs automatically via Celery Beat (no cron needed)
+# Includes: SharePoint, Redis, and Celery task cleanup at 2:00 AM UTC
 ```
 
 ### Manual Execution
@@ -938,6 +957,42 @@ You can also run the cleanup scripts manually:
 # Check cleanup logs
 tail -f logs/cleanup_log_entries.log
 tail -f logs/cleanup_csv_entries.log
+tail -f logs/sharepoint_cleanup.log
+```
+
+### SharePoint Cleanup Technical Details
+
+**Conflict Prevention Mechanism:**
+- Uses SharePoint workbook sessions for atomic operations
+- Cleanup runs at 3:00 AM UTC when main processing is typically idle
+- Delete operations work from bottom to top to prevent index shifting
+- Session management prevents conflicts with concurrent writes from main application
+
+**Data Integrity Features:**
+- Row deletion (not content clearing) prevents blank spaces in Excel
+- Preserves table structure and formatting
+- Maintains header rows and Excel formulas
+- Handles various Excel date formats automatically
+
+**Scheduling Comparison:**
+- **12:05 AM UTC**: Log cleanup (file-based, fast, via cron)
+- **12:20 AM UTC**: CSV cleanup (file-based, medium speed, via cron)  
+- **2:00 AM UTC**: Comprehensive system cleanup (SharePoint + Redis + Celery, via Celery Beat)
+
+**Monitoring System Cleanup:**
+```bash
+# Check if comprehensive cleanup is scheduled in Celery Beat
+celery -A src.tasks.telegram_celery_tasks inspect scheduled
+
+# Monitor cleanup task execution  
+tail -f logs/telegram_tasks.log
+tail -f logs/sharepoint_cleanup.log
+
+# Check task status
+celery -A src.tasks.telegram_celery_tasks inspect active
+
+# Check data retention configuration
+grep "DATA_RETENTION_DAYS" config/config.json
 ```
 
 ## Performance and Scaling

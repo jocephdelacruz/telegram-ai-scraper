@@ -66,6 +66,11 @@ task_annotations = {
         'rate_limit': '30/m',   # SharePoint API has limits
         'time_limit': 120,      # 2 minutes for SharePoint operations
         'soft_time_limit': 100,
+    },
+    'src.tasks.telegram_celery_tasks.cleanup_old_tasks': {
+        'rate_limit': '2/h',    # Run infrequently, comprehensive cleanup
+        'time_limit': 1800,     # 30 minutes for all cleanup operations
+        'soft_time_limit': 1500, # 25 minutes soft limit
     }
 }
 

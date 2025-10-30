@@ -123,6 +123,7 @@ if [ ! -f "config/config_sample.json" ]; then
    "TEAMS_ADMIN_WEBHOOK": "your_admin_teams_webhook_url_here",
    "TEAMS_ADMIN_CHANNEL": "Admin Alerts",
    "OPEN_AI_KEY": "your_openai_api_key_here",
+   "DATA_RETENTION_DAYS": 7,
    "TELEGRAM_CONFIG": {
       "API_ID": "your_telegram_api_id",
       "API_HASH": "your_telegram_api_hash",

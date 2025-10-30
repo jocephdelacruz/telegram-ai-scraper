@@ -54,6 +54,7 @@ The setup script will guide you through configuration:
    "TEAMS_ADMIN_WEBHOOK": "https://your-admin-teams-webhook-url-here",
    "TEAMS_ADMIN_CHANNEL": "Admin Alerts",
    "OPEN_AI_KEY": "sk-your-actual-openai-key-here",
+   "DATA_RETENTION_DAYS": 7,
    
    "TELEGRAM_CONFIG": {
       "API_ID": "your_actual_telegram_api_id",
