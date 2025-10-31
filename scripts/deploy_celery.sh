@@ -551,7 +551,8 @@ except Exception as e:
                     echo "- Main Processor: $MAIN_PROCESSOR_WORKERS workers (telegram_processing,telegram_fetch)"
                     echo "- Data Services Worker: $DATA_SERVICES_WORKERS worker (sharepoint,backup,notifications)"
                     if [ "$MAINTENANCE_SPLIT_WORKERS" -gt 0 ]; then
-                        echo "- Maintenance Worker: $MAINTENANCE_SPLIT_WORKERS worker (maintenance,monitoring)"
+                        #echo "- Maintenance Worker: $MAINTENANCE_SPLIT_WORKERS worker (maintenance,monitoring)"
+                        echo "- Maintenance Worker: $MAINTENANCE_SPLIT_WORKERS worker (maintenance)"
                     else
                         echo "- Maintenance Worker: DISABLED (set MAINTENANCE_SPLIT_WORKERS > 0 to enable)"
                     fi
@@ -632,7 +633,8 @@ except Exception as e:
         ;;
     "maintenance")
         check_prerequisites
-        start_worker "maintenance" "maintenance,monitoring" $MAINTENANCE_WORKERS
+        #start_worker "maintenance" "maintenance,monitoring" $MAINTENANCE_WORKERS
+        start_worker "maintenance" "maintenance" $MAINTENANCE_WORKERS
         ;;
     "data_services")
         check_prerequisites
