@@ -787,22 +787,22 @@ def fetch_new_messages_from_all_channels(self):
         # 🛡️ CRITICAL SESSION SAFETY CHECK - Prevent concurrent access that causes phone logout
         from src.integrations.session_safety import SessionSafetyManager, SessionSafetyError
         
-        # safety_manager = SessionSafetyManager()
-        # try:
-        #     safety_manager.check_session_safety("periodic_fetch")
-        #     LOGGER.writeLog("✅ Session safety check passed - safe to start periodic fetch")
-        # except SessionSafetyError as safety_error:
-        #     # Multiple workers trying to access session - abort this attempt
-        #     LOGGER.writeLog(f"🛡️ SESSION SAFETY ABORT: {safety_error}")
-        #     LOGGER.writeLog("⏸️  Skipping this periodic fetch to prevent phone logout")
-        #     return {
-        #         "status": "skipped_for_safety",
-        #         "timestamp": datetime.now().isoformat(),
-        #         "reason": "Session safety protection active - prevented concurrent access",
-        #         "channels_checked": 0,
-        #         "messages_processed": 0,
-        #         "messages_skipped": 0
-        #     }
+        safety_manager = SessionSafetyManager()
+        try:
+            safety_manager.check_session_safety("periodic_fetch")
+            LOGGER.writeLog("✅ Session safety check passed - safe to start periodic fetch")
+        except SessionSafetyError as safety_error:
+            # Multiple workers trying to access session - abort this attempt
+            LOGGER.writeLog(f"🛡️ SESSION SAFETY ABORT: {safety_error}")
+            LOGGER.writeLog("⏸️  Skipping this periodic fetch to prevent phone logout")
+            return {
+                "status": "skipped_for_safety",
+                "timestamp": datetime.now().isoformat(),
+                "reason": "Session safety protection active - prevented concurrent access",
+                "channels_checked": 0,
+                "messages_processed": 0,
+                "messages_skipped": 0
+            }
         
         LOGGER.writeLog("Starting periodic message fetch from all channels")
         
@@ -864,14 +864,14 @@ def fetch_new_messages_from_all_channels(self):
             raise Exception("Telegram configuration incomplete")
         
         # 🛡️ Additional safety check before creating scraper (double protection)
-        # LOGGER.writeLog("🔐 Performing final session safety verification before Telegram client creation")
-        # safety_manager = SessionSafetyManager()
-        # try:
-        #     safety_manager.check_session_safety("telegram_client_creation")
-        #     LOGGER.writeLog("✅ Final session safety verified - proceeding with client creation")
-        # except SessionSafetyError:
-        #     LOGGER.writeLog("🛡️ ABORT: Session safety check failed at client creation - preventing phone logout")
-        #     raise Exception("Session safety protection triggered - concurrent access detected")
+        LOGGER.writeLog("🔐 Performing final session safety verification before Telegram client creation")
+        safety_manager = SessionSafetyManager()
+        try:
+            safety_manager.check_session_safety("telegram_client_creation")
+            LOGGER.writeLog("✅ Final session safety verified - proceeding with client creation")
+        except SessionSafetyError:
+            LOGGER.writeLog("🛡️ ABORT: Session safety check failed at client creation - preventing phone logout")
+            raise Exception("Session safety protection triggered - concurrent access detected")
 
         telegram_scraper = TelegramScraper(
             telegram_config['API_ID'],
@@ -916,27 +916,27 @@ def fetch_new_messages_from_all_channels(self):
         LOGGER.writeLog(f"🔐 SESSION ISSUE: {e}")
 
         # CRITICAL: Check if session safety allows retry to prevent phone logout
-        # try:
-        #     from src.integrations.session_safety import SessionSafetyManager, SessionSafetyError
-        #     safety = SessionSafetyManager()
-        #     safety.check_session_safety("celery_task_retry_validation")
-        #     LOGGER.writeLog("✅ Session safety verified - safe to retry")
-        # except Exception as safety_error:
-        #     LOGGER.writeLog(f"� CRITICAL: Session safety check failed - {safety_error}")
-        #     LOGGER.writeLog("🛑 ABORTING RETRY to prevent phone logout!")
-        #     LOGGER.writeLog("💡 Please stop all workers, renew session, then restart workers")
-        #     LOGGER.writeLog("💡 Commands: ./scripts/deploy_celery.sh stop && ./scripts/telegram_session.sh renew && ./scripts/deploy_celery.sh start")
+        try:
+            from src.integrations.session_safety import SessionSafetyManager, SessionSafetyError
+            safety = SessionSafetyManager()
+            safety.check_session_safety("celery_task_retry_validation")
+            LOGGER.writeLog("✅ Session safety verified - safe to retry")
+        except Exception as safety_error:
+            LOGGER.writeLog(f"� CRITICAL: Session safety check failed - {safety_error}")
+            LOGGER.writeLog("🛑 ABORTING RETRY to prevent phone logout!")
+            LOGGER.writeLog("💡 Please stop all workers, renew session, then restart workers")
+            LOGGER.writeLog("💡 Commands: ./scripts/deploy_celery.sh stop && ./scripts/telegram_session.sh renew && ./scripts/deploy_celery.sh start")
             
-        #     # Return failure instead of retry to prevent dangerous session access
-        #     return {
-        #         "status": "session_safety_abort",
-        #         "timestamp": datetime.now().isoformat(),
-        #         "error": f"Session retry aborted for safety: {safety_error}",
-        #         "channels_checked": 0,
-        #         "messages_processed": 0,
-        #         "messages_skipped": 0,
-        #         "action_required": "stop_workers_renew_session_restart"
-        #     }
+            # Return failure instead of retry to prevent dangerous session access
+            return {
+                "status": "session_safety_abort",
+                "timestamp": datetime.now().isoformat(),
+                "error": f"Session retry aborted for safety: {safety_error}",
+                "channels_checked": 0,
+                "messages_processed": 0,
+                "messages_skipped": 0,
+                "action_required": "stop_workers_renew_session_restart"
+            }
         
         # Only retry if session safety allows it
 

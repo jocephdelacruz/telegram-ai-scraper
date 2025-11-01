@@ -22,15 +22,16 @@ def main():
     safety = SessionSafetyManager()
     
     # Check for running workers
-    workers_running, worker_pids = safety.is_celery_workers_running()
+    workers_active, worker_pids, worker_state = safety.is_telegram_workers_active()
     
-    if workers_running:
-        print("⚠️  CELERY WORKERS DETECTED:")
+    if workers_active:
+        print("⚠️  TELEGRAM WORKERS DETECTED:")
         print(f"   Active worker PIDs: {', '.join(worker_pids)}")
+        print(f"   Worker state: {worker_state}")
         print("   Workers may be using the Telegram session")
         print()
     else:
-        print("✅ No Celery workers detected")
+        print("✅ No Telegram workers detected")
         print()
     
     # Check for session lock

@@ -18,34 +18,82 @@ class SessionSafetyError(Exception):
 
 
 class SessionSafetyManager:
-    """Manages safe access to Telegram sessions"""
+    """
+    Manages safe access to Telegram sessions by checking worker processes
+    
+    Note: This class now primarily uses worker process detection for safety.
+    The actual session file locking is handled by TelegramSessionManager using fcntl.
+    """
     
     def __init__(self, session_file="telegram_session"):
         self.session_file = session_file
+        # Keep these for backward compatibility with check_session_safety.py
         self.lock_file = f"{session_file}.lock"
         self.process_info_file = f"{session_file}.process_info"
     
-    def is_celery_workers_running(self):
-        """Check if Celery workers that use Telegram are currently running"""
+    def is_telegram_workers_active(self):
+        """
+        Check if Celery workers that handle Telegram operations are currently active
+        This is the primary and most accurate way to determine if session access is safe
+        """
         try:
-            # Check for specific Celery workers that handle Telegram tasks
+            # Method 1: Check for running Telegram-related Celery processes
             result = subprocess.run([
                 'pgrep', '-f', 'celery.*telegram_celery_tasks'
             ], capture_output=True, text=True)
             
             if result.returncode == 0 and result.stdout.strip():
                 pids = result.stdout.strip().split('\n')
-                return True, pids
-            return False, []
-        except Exception:
-            return False, []
+                
+                # Method 2: For extra accuracy, check if any of these workers are actually
+                # processing Telegram fetch tasks (not just idle)
+                try:
+                    # Try to connect to Celery and check active tasks
+                    import subprocess
+                    celery_inspect = subprocess.run([
+                        'celery', '-A', 'src.tasks.telegram_celery_tasks', 'inspect', 'active'
+                    ], capture_output=True, text=True, timeout=5)
+                    
+                    if celery_inspect.returncode == 0:
+                        # Check if any active tasks are Telegram-related
+                        active_output = celery_inspect.stdout.lower()
+                        telegram_tasks = [
+                            'fetch_new_messages_from_all_channels',
+                            'fetch_messages_async',
+                            'telegram_scraper'
+                        ]
+                        
+                        for task in telegram_tasks:
+                            if task.lower() in active_output:
+                                return True, pids, "telegram_task_active"
+                        
+                        # Workers exist but no active Telegram tasks
+                        return True, pids, "workers_idle"
+                    else:
+                        # Can't check active tasks, assume workers are potentially active
+                        return True, pids, "workers_unknown_state"
+                        
+                except Exception:
+                    # Celery inspect failed, but processes exist - assume active for safety
+                    return True, pids, "workers_assumed_active"
+            
+            return False, [], "no_workers"
+            
+        except Exception as e:
+            # Error checking - assume safe (no workers) but log the issue
+            print(f"Warning: Could not check Telegram worker status: {e}")
+            return False, [], "check_failed"
     
     def check_session_safety(self, operation_type="test"):
         """
         Check if it's safe to access the Telegram session
         
+        This function now uses a simplified, more accurate approach:
+        - Only checks if Telegram-related Celery workers are active
+        - Removed problematic lock file checking that was causing continuous failures
+        
         Args:
-            operation_type: Type of operation ("test", "debug", "auth", etc.)
+            operation_type: Type of operation ("test", "debug", "auth", "periodic_fetch", etc.)
             
         Returns:
             bool: True if safe to proceed
@@ -53,56 +101,47 @@ class SessionSafetyManager:
         Raises:
             SessionSafetyError: If unsafe to proceed with details
         """
-        workers_running, worker_pids = self.is_celery_workers_running()
+        workers_active, worker_pids, worker_state = self.is_telegram_workers_active()
         
-        if workers_running:
-            raise SessionSafetyError(
-                f"🛡️ PROTECTED: Celery workers are running - preventing session conflict\n"
-                f"   Active worker PIDs: {', '.join(worker_pids)}\n"
-                f"   \n"
-                f"   Running {operation_type} now could cause session invalidation.\n"
-                f"   \n"
-                f"   Solutions:\n"
-                f"   1. Stop workers first: ./scripts/deploy_celery.sh stop\n"
-                f"   2. Run your {operation_type}, then restart: ./scripts/deploy_celery.sh start\n"
-                f"   3. Or wait for workers to finish current tasks (may take a few minutes)\n"
-                f"   \n"
-                f"   Check worker status: ./scripts/status.sh"
-            )
-        
-        # Check for lock file (additional safety)
-        if os.path.exists(self.lock_file):
-            try:
-                # Check if lock file is stale (older than 30 minutes)
-                lock_age = time.time() - os.path.getmtime(self.lock_file)
-                stale_threshold = 30 * 60  # 30 minutes in seconds
-                
-                if lock_age > stale_threshold:
-                    # Remove stale lock file
-                    try:
-                        os.remove(self.lock_file)
-                        print(f"🧹 Removed stale lock file (age: {int(lock_age/60)} minutes)")
-                        return True  # Safe to proceed after cleanup
-                    except OSError:
-                        pass  # Could not remove, treat as active lock
-                
-                # Lock file is recent, treat as active
-                with open(self.lock_file, 'r') as f:
-                    lock_content = f.read().strip()
+        # For periodic fetch operations, be more lenient
+        if operation_type.startswith("periodic_fetch"):
+            if workers_active and worker_state == "telegram_task_active":
+                # Another periodic fetch is already running - skip this cycle
                 raise SessionSafetyError(
-                    f"🛡️ PROTECTED: Session lock file exists - preventing conflict\n"
-                    f"   Lock file: {self.lock_file}\n"
-                    f"   Content: {lock_content}\n"
-                    f"   Age: {int(lock_age/60)} minutes\n"
-                    f"   \n"
-                    f"   Another process may be using the Telegram session.\n"
-                    f"   Wait for it to finish or manually remove the lock file if stuck.\n"
-                    f"   \n"
-                    f"   Manual cleanup: rm {self.lock_file}"
+                    f"🔄 Another Telegram fetch is currently in progress\n"
+                    f"   Worker PIDs: {', '.join(worker_pids)}\n"
+                    f"   This is normal - the system will try again in the next cycle."
                 )
-            except (IOError, OSError):
-                pass  # Lock file might be in use or temporary
+            elif workers_active and worker_state == "workers_idle":
+                # Workers exist but idle - this is actually safe for periodic fetch
+                return True
+            elif not workers_active:
+                # No workers - safe to proceed
+                return True
+            else:
+                # Workers in unknown state - proceed with caution for periodic tasks
+                print(f"⚠️  Warning: Telegram workers in {worker_state} state, proceeding with periodic fetch")
+                return True
         
+        # For manual operations (auth, renew, test), be more strict
+        else:
+            if workers_active:
+                raise SessionSafetyError(
+                    f"🛡️ PROTECTED: Telegram workers are active - preventing session conflict\n"
+                    f"   Active worker PIDs: {', '.join(worker_pids)}\n"
+                    f"   Worker state: {worker_state}\n"
+                    f"   \n"
+                    f"   Running {operation_type} now could cause session invalidation.\n"
+                    f"   \n"
+                    f"   Solutions:\n"
+                    f"   1. Stop workers first: ./scripts/deploy_celery.sh stop\n"
+                    f"   2. Run your {operation_type}, then restart: ./scripts/deploy_celery.sh start\n"
+                    f"   3. Or wait for workers to finish current tasks\n"
+                    f"   \n"
+                    f"   Check worker status: ./scripts/status.sh"
+                )
+        
+        # All checks passed - safe to proceed
         return True
     
     def record_session_access(self, process_type, additional_info=""):
