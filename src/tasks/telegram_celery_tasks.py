@@ -568,10 +568,8 @@ def cleanup_old_tasks(self):
             LOGGER.writeLog("🔄 Starting SharePoint cleanup...")
             from src.tasks.sharepoint_cleanup import cleanup_old_sharepoint_entries
             
-            # Call the SharePoint cleanup function directly (not as Celery task)
-            sharepoint_result = cleanup_old_sharepoint_entries.apply(
-                kwargs={'days_to_keep': data_retention_days}
-            ).get()
+            # Call the SharePoint cleanup function directly
+            sharepoint_result = cleanup_old_sharepoint_entries(days_to_keep=data_retention_days)
             
             cleanup_results["sharepoint"] = sharepoint_result
             LOGGER.writeLog(f"✅ SharePoint cleanup completed: {sharepoint_result.get('status', 'unknown')}")
