@@ -509,7 +509,7 @@ def save_to_csv_backup(self, message_data, config):
             value = message_data.get(field, '')
             
             # Convert newlines to <br> tags for CSV storage to prevent multi-line entries
-            if isinstance(value, str) and field in ['Message_Text', 'Original_Text', 'Attached_Links']:
+            if isinstance(value, str) and field in ['Message_Text', 'Original_Text']:
                 # Replace various types of newlines with <br> tags
                 value = value.replace('\r\n', '<br>').replace('\n', '<br>').replace('\r', '<br>')
                 if value != message_data.get(field, ''):
@@ -533,17 +533,245 @@ def save_to_csv_backup(self, message_data, config):
         raise self.retry(exc=e)
 
 
-@celery.task
-def cleanup_old_tasks():
-    """Periodic task to clean up old task results"""
+@celery.task(bind=True, max_retries=2, default_retry_delay=600)
+def cleanup_old_tasks(self):
+    """
+    Comprehensive cleanup task that handles all maintenance operations:
+    1. Old Celery task results cleanup
+    2. SharePoint entries cleanup
+    3. Redis cache cleanup
+    """
+    cleanup_results = {
+        "celery_tasks": {"status": "not_run"},
+        "sharepoint": {"status": "not_run"}, 
+        "redis": {"status": "not_run"}
+    }
+    
     try:
-        # Clean up task results older than 24 hours
-        from celery.result import AsyncResult
-        # Implementation depends on your result backend
-        LOGGER.writeLog("Cleaning up old task results")
-        return {"status": "success"}
+        LOGGER.writeLog("🧹 Starting comprehensive cleanup - Celery tasks, SharePoint, and Redis")
+        
+        # Load configuration for data retention settings
+        config = load_cleanup_config()
+        data_retention_days = config.get('DATA_RETENTION_DAYS', 3)
+        
+        LOGGER.writeLog(f"📅 Using data retention period: {data_retention_days} days")
+        
+        # 1. Clean up old Celery task results
+        try:
+            cleanup_results["celery_tasks"] = cleanup_celery_task_results()
+        except Exception as e:
+            LOGGER.writeLog(f"❌ Celery task cleanup failed: {e}")
+            cleanup_results["celery_tasks"] = {"status": "error", "error": str(e)}
+        
+        # 2. Clean up SharePoint entries
+        try:
+            LOGGER.writeLog("🔄 Starting SharePoint cleanup...")
+            from src.tasks.sharepoint_cleanup import cleanup_old_sharepoint_entries
+            
+            # Call the SharePoint cleanup function directly (not as Celery task)
+            sharepoint_result = cleanup_old_sharepoint_entries.apply(
+                kwargs={'days_to_keep': data_retention_days}
+            ).get()
+            
+            cleanup_results["sharepoint"] = sharepoint_result
+            LOGGER.writeLog(f"✅ SharePoint cleanup completed: {sharepoint_result.get('status', 'unknown')}")
+            
+        except Exception as e:
+            LOGGER.writeLog(f"❌ SharePoint cleanup failed: {e}")
+            cleanup_results["sharepoint"] = {"status": "error", "error": str(e)}
+        
+        # 3. Clean up old Redis entries
+        try:
+            cleanup_results["redis"] = cleanup_redis_entries()
+        except Exception as e:
+            LOGGER.writeLog(f"❌ Redis cleanup failed: {e}")
+            cleanup_results["redis"] = {"status": "error", "error": str(e)}
+        
+        # Summary
+        successful_cleanups = sum(1 for result in cleanup_results.values() 
+                                if result.get("status") == "success")
+        total_cleanups = len(cleanup_results)
+        
+        if successful_cleanups == total_cleanups:
+            LOGGER.writeLog(f"✅ All cleanup operations completed successfully ({successful_cleanups}/{total_cleanups})")
+            return {"status": "success", "details": cleanup_results}
+        else:
+            LOGGER.writeLog(f"⚠️  Partial cleanup success ({successful_cleanups}/{total_cleanups})")
+            
+            # For partial success, we don't retry - individual operations either succeeded or failed
+            # Retrying would duplicate successful operations
+            return {"status": "partial_success", "details": cleanup_results}
+            
     except Exception as e:
-        LOGGER.writeLog(f"Task cleanup failed: {e}")
+        error_msg = f"Comprehensive cleanup failed: {e}"
+        LOGGER.writeLog(f"❌ {error_msg}")
+        
+        # Only retry on critical system errors (not partial failures)
+        # This catches configuration loading errors, system connectivity issues, etc.
+        if self.request.retries < self.max_retries:
+            retry_delay = 600 * (2 ** self.request.retries)  # Exponential backoff: 10, 20 minutes
+            LOGGER.writeLog(f"🔄 Retrying comprehensive cleanup in {retry_delay} seconds (attempt {self.request.retries + 1}/{self.max_retries})")
+            
+            # Send admin notification about retry
+            try:
+                from src.integrations.teams_utils import send_critical_exception
+                send_critical_exception(
+                    "CleanupTaskRetry",
+                    error_msg,
+                    "cleanup_old_tasks",
+                    additional_context={
+                        "retry_attempt": self.request.retries + 1,
+                        "max_retries": self.max_retries,
+                        "next_retry_in_seconds": retry_delay,
+                        "partial_results": cleanup_results
+                    }
+                )
+            except Exception as admin_error:
+                LOGGER.writeLog(f"⚠️  Could not send retry notification to admin: {admin_error}")
+            
+            raise self.retry(countdown=retry_delay, exc=e)
+        else:
+            # Max retries reached - send final error notification
+            try:
+                from src.integrations.teams_utils import send_critical_exception
+                send_critical_exception(
+                    "CleanupTaskFinalFailure",
+                    f"Cleanup task failed after {self.max_retries} retries: {error_msg}",
+                    "cleanup_old_tasks",
+                    additional_context={
+                        "final_failure": True,
+                        "total_retries": self.max_retries,
+                        "partial_results": cleanup_results
+                    }
+                )
+            except Exception as admin_error:
+                LOGGER.writeLog(f"⚠️  Could not send final failure notification to admin: {admin_error}")
+        
+        return {"status": "error", "error": error_msg, "details": cleanup_results}
+
+
+def load_cleanup_config():
+    """Load configuration for cleanup operations"""
+    try:
+        import os
+        from src.core import file_handling as fh
+        
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        config_path = os.path.join(project_root, "config", "config.json")
+        config_handler = fh.FileHandling(config_path)
+        config = config_handler.read_json()
+        
+        return config if config else {}
+    except Exception as e:
+        LOGGER.writeLog(f"⚠️  Failed to load cleanup config, using defaults: {e}")
+        return {}
+
+
+def cleanup_celery_task_results():
+    """Clean up old Celery task results from Redis"""
+    try:
+        LOGGER.writeLog("🔄 Cleaning up old Celery task results...")
+        
+        import redis
+        from datetime import datetime, timedelta
+        
+        # Connect to Redis (using same config as Celery)
+        redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+        
+        # Clean up task results older than 24 hours
+        cutoff_time = datetime.now() - timedelta(hours=24)
+        cutoff_timestamp = cutoff_time.timestamp()
+        
+        deleted_count = 0
+        
+        # Get all result keys (Celery stores results with 'celery-task-meta-' prefix)
+        result_keys = redis_client.keys('celery-task-meta-*')
+        
+        for key in result_keys:
+            try:
+                # Get the TTL (time to live) of the key
+                ttl = redis_client.ttl(key)
+                
+                # If TTL is -1, the key has no expiration; check its age
+                if ttl == -1:
+                    # For keys without TTL, we can delete them if they're old
+                    # (This is safe because Celery task results should expire)
+                    redis_client.delete(key)
+                    deleted_count += 1
+                elif ttl > 86400:  # More than 24 hours left
+                    # Set a reasonable TTL (24 hours) for very old keys
+                    redis_client.expire(key, 86400)
+                    
+            except Exception as e:
+                LOGGER.writeLog(f"⚠️  Error processing Redis key {key}: {e}")
+                continue
+        
+        LOGGER.writeLog(f"✅ Cleaned up {deleted_count} old Celery task results from Redis")
+        return {"status": "success", "deleted_count": deleted_count}
+        
+    except Exception as e:
+        LOGGER.writeLog(f"❌ Failed to clean up Celery task results: {e}")
+        return {"status": "error", "error": str(e)}
+
+
+def cleanup_redis_entries():
+    """Safely clean up old Redis entries"""
+    try:
+        LOGGER.writeLog("🔄 Cleaning up old Redis entries...")
+        
+        import redis
+        from datetime import datetime, timedelta
+        
+        # Connect to Redis
+        redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+        
+        deleted_count = 0
+        processed_count = 0
+        
+        # Get all keys and check their age
+        all_keys = redis_client.keys('*')
+        
+        # Filter for safe-to-delete keys (avoid Celery Beat schedule and active tasks)
+        safe_patterns = [
+            'celery-task-meta-*',  # Old task results
+            '_kombu.binding.*',    # Old message routing
+        ]
+        
+        # Dangerous patterns to avoid
+        avoid_patterns = [
+            'celerybeat-schedule',     # Celery Beat schedule
+            'celery-beat-*',          # Celery Beat locks
+            'celery-worker-*',        # Active worker info
+            'celery-queue-*',         # Active task queues
+        ]
+        
+        for key in all_keys:
+            try:
+                processed_count += 1
+                
+                # Skip dangerous keys
+                if any(key.startswith(pattern.replace('*', '')) or 
+                      key == pattern.replace('*', '') for pattern in avoid_patterns):
+                    continue
+                
+                # Only process safe patterns
+                if any(key.startswith(pattern.replace('*', '')) for pattern in safe_patterns):
+                    ttl = redis_client.ttl(key)
+                    
+                    # Delete keys older than 24 hours or without TTL
+                    if ttl == -1 or ttl > 86400:
+                        redis_client.delete(key)
+                        deleted_count += 1
+                
+            except Exception as e:
+                LOGGER.writeLog(f"⚠️  Error processing Redis key {key}: {e}")
+                continue
+        
+        LOGGER.writeLog(f"✅ Redis cleanup completed: processed {processed_count} keys, deleted {deleted_count}")
+        return {"status": "success", "processed_count": processed_count, "deleted_count": deleted_count}
+        
+    except Exception as e:
+        LOGGER.writeLog(f"❌ Failed to clean up Redis entries: {e}")
         return {"status": "error", "error": str(e)}
 
 
@@ -559,22 +787,22 @@ def fetch_new_messages_from_all_channels(self):
         # 🛡️ CRITICAL SESSION SAFETY CHECK - Prevent concurrent access that causes phone logout
         from src.integrations.session_safety import SessionSafetyManager, SessionSafetyError
         
-        # safety_manager = SessionSafetyManager()
-        # try:
-        #     safety_manager.check_session_safety("periodic_fetch")
-        #     LOGGER.writeLog("✅ Session safety check passed - safe to start periodic fetch")
-        # except SessionSafetyError as safety_error:
-        #     # Multiple workers trying to access session - abort this attempt
-        #     LOGGER.writeLog(f"🛡️ SESSION SAFETY ABORT: {safety_error}")
-        #     LOGGER.writeLog("⏸️  Skipping this periodic fetch to prevent phone logout")
-        #     return {
-        #         "status": "skipped_for_safety",
-        #         "timestamp": datetime.now().isoformat(),
-        #         "reason": "Session safety protection active - prevented concurrent access",
-        #         "channels_checked": 0,
-        #         "messages_processed": 0,
-        #         "messages_skipped": 0
-        #     }
+        safety_manager = SessionSafetyManager()
+        try:
+            safety_manager.check_session_safety("periodic_fetch")
+            LOGGER.writeLog("✅ Session safety check passed - safe to start periodic fetch")
+        except SessionSafetyError as safety_error:
+            # Multiple workers trying to access session - abort this attempt
+            LOGGER.writeLog(f"🛡️ SESSION SAFETY ABORT: {safety_error}")
+            LOGGER.writeLog("⏸️  Skipping this periodic fetch to prevent phone logout")
+            return {
+                "status": "skipped_for_safety",
+                "timestamp": datetime.now().isoformat(),
+                "reason": "Session safety protection active - prevented concurrent access",
+                "channels_checked": 0,
+                "messages_processed": 0,
+                "messages_skipped": 0
+            }
         
         LOGGER.writeLog("Starting periodic message fetch from all channels")
         
@@ -636,14 +864,14 @@ def fetch_new_messages_from_all_channels(self):
             raise Exception("Telegram configuration incomplete")
         
         # 🛡️ Additional safety check before creating scraper (double protection)
-        # LOGGER.writeLog("🔐 Performing final session safety verification before Telegram client creation")
-        # safety_manager = SessionSafetyManager()
-        # try:
-        #     safety_manager.check_session_safety("telegram_client_creation")
-        #     LOGGER.writeLog("✅ Final session safety verified - proceeding with client creation")
-        # except SessionSafetyError:
-        #     LOGGER.writeLog("🛡️ ABORT: Session safety check failed at client creation - preventing phone logout")
-        #     raise Exception("Session safety protection triggered - concurrent access detected")
+        LOGGER.writeLog("🔐 Performing final session safety verification before Telegram client creation")
+        safety_manager = SessionSafetyManager()
+        try:
+            safety_manager.check_session_safety("telegram_client_creation")
+            LOGGER.writeLog("✅ Final session safety verified - proceeding with client creation")
+        except SessionSafetyError:
+            LOGGER.writeLog("🛡️ ABORT: Session safety check failed at client creation - preventing phone logout")
+            raise Exception("Session safety protection triggered - concurrent access detected")
 
         telegram_scraper = TelegramScraper(
             telegram_config['API_ID'],
@@ -688,27 +916,27 @@ def fetch_new_messages_from_all_channels(self):
         LOGGER.writeLog(f"🔐 SESSION ISSUE: {e}")
 
         # CRITICAL: Check if session safety allows retry to prevent phone logout
-        # try:
-        #     from src.integrations.session_safety import SessionSafetyManager, SessionSafetyError
-        #     safety = SessionSafetyManager()
-        #     safety.check_session_safety("celery_task_retry_validation")
-        #     LOGGER.writeLog("✅ Session safety verified - safe to retry")
-        # except Exception as safety_error:
-        #     LOGGER.writeLog(f"� CRITICAL: Session safety check failed - {safety_error}")
-        #     LOGGER.writeLog("🛑 ABORTING RETRY to prevent phone logout!")
-        #     LOGGER.writeLog("💡 Please stop all workers, renew session, then restart workers")
-        #     LOGGER.writeLog("💡 Commands: ./scripts/deploy_celery.sh stop && ./scripts/telegram_session.sh renew && ./scripts/deploy_celery.sh start")
+        try:
+            from src.integrations.session_safety import SessionSafetyManager, SessionSafetyError
+            safety = SessionSafetyManager()
+            safety.check_session_safety("celery_task_retry_validation")
+            LOGGER.writeLog("✅ Session safety verified - safe to retry")
+        except Exception as safety_error:
+            LOGGER.writeLog(f"� CRITICAL: Session safety check failed - {safety_error}")
+            LOGGER.writeLog("🛑 ABORTING RETRY to prevent phone logout!")
+            LOGGER.writeLog("💡 Please stop all workers, renew session, then restart workers")
+            LOGGER.writeLog("💡 Commands: ./scripts/deploy_celery.sh stop && ./scripts/telegram_session.sh renew && ./scripts/deploy_celery.sh start")
             
-        #     # Return failure instead of retry to prevent dangerous session access
-        #     return {
-        #         "status": "session_safety_abort",
-        #         "timestamp": datetime.now().isoformat(),
-        #         "error": f"Session retry aborted for safety: {safety_error}",
-        #         "channels_checked": 0,
-        #         "messages_processed": 0,
-        #         "messages_skipped": 0,
-        #         "action_required": "stop_workers_renew_session_restart"
-        #     }
+            # Return failure instead of retry to prevent dangerous session access
+            return {
+                "status": "session_safety_abort",
+                "timestamp": datetime.now().isoformat(),
+                "error": f"Session retry aborted for safety: {safety_error}",
+                "channels_checked": 0,
+                "messages_processed": 0,
+                "messages_skipped": 0,
+                "action_required": "stop_workers_renew_session_restart"
+            }
         
         # Only retry if session safety allows it
 
@@ -992,7 +1220,7 @@ def load_beat_schedule():
             },
             'cleanup-old-tasks': {
                 'task': 'src.tasks.telegram_celery_tasks.cleanup_old_tasks',
-                'schedule': crontab(hour=2, minute=0),  # Run daily at 2 AM
+                'schedule': crontab(hour=1, minute=0),  # Run daily at 1 AM - handles all cleanup tasks
             },
             'health-check': {
                 'task': 'src.tasks.telegram_celery_tasks.health_check',
@@ -1009,7 +1237,7 @@ def load_beat_schedule():
             },
             'cleanup-old-tasks': {
                 'task': 'src.tasks.telegram_celery_tasks.cleanup_old_tasks',
-                'schedule': crontab(hour=2, minute=0),
+                'schedule': crontab(hour=1, minute=0),
             },
             'health-check': {
                 'task': 'src.tasks.telegram_celery_tasks.health_check',
