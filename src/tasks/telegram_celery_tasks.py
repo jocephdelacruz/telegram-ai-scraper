@@ -509,7 +509,7 @@ def save_to_csv_backup(self, message_data, config):
             value = message_data.get(field, '')
             
             # Convert newlines to <br> tags for CSV storage to prevent multi-line entries
-            if isinstance(value, str) and field in ['Message_Text', 'Original_Text']:
+            if isinstance(value, str) and field in ['Message_Text', 'Original_Text', 'Attached_Links']:
                 # Replace various types of newlines with <br> tags
                 value = value.replace('\r\n', '<br>').replace('\n', '<br>').replace('\r', '<br>')
                 if value != message_data.get(field, ''):
