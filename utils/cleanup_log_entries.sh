@@ -58,6 +58,8 @@ clean_log_file() {
     local temp_file="$TEMP_DIR/$(basename "$log_file")"
     local lock_file="${log_file}.cleanup_lock"
     local cutoff_epoch=$(date -d "$DAYS_TO_KEEP days ago" +%s)
+    # Also expose a human-friendly cutoff date for logging/debug
+    local cutoff_date_human=$(date -d "$DAYS_TO_KEEP days ago" '+%Y-%m-%d %H:%M:%S')
     local original_lines=0
     local kept_lines=0
     local removed_lines=0
@@ -93,14 +95,28 @@ clean_log_file() {
     while IFS= read -r line || [[ -n "$line" ]]; do
         if has_valid_timestamp "$line"; then
             local timestamp=$(extract_timestamp "$line")
-            local line_epoch=$(timestamp_to_epoch "$timestamp")
-            
-            # Keep line if timestamp is valid and within retention period
-            if [[ -n "$line_epoch" ]] && [[ $line_epoch -gt $cutoff_epoch ]]; then
+
+            # timestamp format is expected to be YYYYMMDD_HH:MM:SS
+            # Extract date and time parts explicitly to avoid fragile slicing
+            local entry_date_part="${timestamp:0:8}"
+            local entry_time_part="${timestamp:9}"
+            local entry_date_formatted="${entry_date_part:0:4}-${entry_date_part:4:2}-${entry_date_part:6:2}"
+
+            # Convert to epoch using date -d (more robust)
+            local line_epoch=0
+            if line_epoch=$(date -d "${entry_date_formatted} ${entry_time_part}" +%s 2>/dev/null); then
+                # Keep line if timestamp is valid and within retention period
+                if [[ -n "$line_epoch" ]] && [[ $line_epoch -gt $cutoff_epoch ]]; then
+                    echo "$line" >> "$temp_file"
+                    ((kept_lines++))
+                else
+                    ((removed_lines++))
+                fi
+            else
+                # If we cannot parse the date/time properly, treat it as malformed and keep it
+                # to avoid accidental data loss
                 echo "$line" >> "$temp_file"
                 ((kept_lines++))
-            else
-                ((removed_lines++))
             fi
         else
             # Keep lines without timestamps (might be multi-line entries or stack traces)
