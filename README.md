@@ -103,6 +103,7 @@ Edit `config.json` with your credentials and preferences:
 - `TEAMS_ADMIN_WEBHOOK`: Microsoft Teams webhook URL for admin alerts and system notifications
 - `TEAMS_ADMIN_CHANNEL`: Name of the admin Teams channel (e.g., "Admin Alerts")
 - `OPEN_AI_KEY`: Your OpenAI API key
+- `DATA_RETENTION_DAYS`: Number of days to keep data before cleanup (default: 3, affects SharePoint, CSV, and logs)
 - `TELEGRAM_CONFIG`: Telegram API credentials and periodic fetch configuration
   - `FETCH_INTERVAL_SECONDS`: How often to check for new messages (default: 240 = 4 minutes)
   - `FETCH_MESSAGE_LIMIT`: Max messages per channel per fetch (default: 10)
@@ -550,6 +551,7 @@ chmod +x scripts/quick_start.sh
 | `monitor_resources.sh` | System resource monitoring | Check performance and memory usage | Real-time stats, alerts |
 | `auto_restart.sh` | Automatic service recovery | Background watchdog service | Auto-restart failed services |
 | `status.sh` | **Enhanced service status** | Quick health check | Process status, **session age/status**, resource usage, commands |
+| `cleanup_sharepoint_manual.sh` | **🧹 Manual SharePoint cleanup** | Clean old entries from SharePoint | Configurable retention days, safe cleanup with backups |
 | `verify_setup.sh` | System setup validation | Before first run, troubleshooting | Comprehensive system check |
 
 #### Comprehensive Testing System
@@ -779,6 +781,53 @@ telegram-ai-scraper/
 │   └── crontab_entries.txt      # Crontab configuration for automated maintenance
 └── telegram-ai-scraper_env/      # Python virtual environment
 ```
+
+## Data Retention & Cleanup System
+
+The system includes comprehensive data retention management with automated cleanup of old entries:
+
+### Automated Daily Cleanup (2:00 AM Manila Time)
+
+The system runs a consolidated cleanup task daily via Celery Beat that handles:
+
+1. **SharePoint Cleanup**: Removes old entries from Excel files while preserving structure
+2. **CSV Cleanup**: Removes old entries from local backup CSV files  
+3. **Log Cleanup**: Removes old log entries while preserving file structure
+4. **Redis Cleanup**: Removes old Celery task results and cached data
+
+### Configuration
+
+- **`DATA_RETENTION_DAYS`**: Controls retention period for all cleanup operations (default: 3 days)
+- **Centralized Management**: Single setting controls SharePoint, CSV, logs, and Redis cleanup
+- **Safe Operations**: All cleanup operations use atomic file operations and proper locking
+
+### Manual SharePoint Cleanup
+
+For immediate SharePoint cleanup outside the scheduled maintenance:
+
+```bash
+# Clean entries older than 7 days
+./scripts/cleanup_sharepoint_manual.sh 7
+
+# Clean entries older than 1 day (for testing)
+./scripts/cleanup_sharepoint_manual.sh 1
+
+# Use default retention (3 days)
+./scripts/cleanup_sharepoint_manual.sh
+```
+
+**Features:**
+- **Configurable Retention**: Override the config.json DATA_RETENTION_DAYS setting
+- **Excel Serial Date Support**: Properly handles Excel's date storage format
+- **Safe Operations**: Creates backups before cleanup and uses atomic operations
+- **Detailed Logging**: Comprehensive logging to `logs/sharepoint_cleanup.log`
+
+### Key Benefits
+
+- **Storage Management**: Prevents SharePoint and local storage from growing indefinitely
+- **Performance**: Keeps data sizes manageable for better query performance
+- **Compliance**: Configurable retention periods for data governance requirements
+- **Safety**: Multiple safety mechanisms prevent accidental data loss
 
 ## Multi-language & Dual-Keyword Support
 

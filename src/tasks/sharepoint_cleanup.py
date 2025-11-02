@@ -62,11 +62,11 @@ def cleanup_old_sharepoint_entries(days_to_keep=3):
         with open(config_path, 'r', encoding='utf-8') as f:
             config = json.load(f)
         
-        # Get SharePoint configuration
-        sharepoint_config = config.get('SHAREPOINT_CONFIG', {})
-        if not sharepoint_config:
-            LOGGER.writeLog("❌ SharePoint configuration not found in config file")
-            return {"status": "error", "message": "SharePoint configuration not found"}
+        # Get SharePoint configuration from MS_SHAREPOINT_ACCESS
+        ms_sharepoint_config = config.get('MS_SHAREPOINT_ACCESS', {})
+        if not ms_sharepoint_config:
+            LOGGER.writeLog("❌ MS_SHAREPOINT_ACCESS configuration not found in config file")
+            return {"status": "error", "message": "MS_SHAREPOINT_ACCESS configuration not found"}
         
         # Statistics tracking
         total_deleted = 0
@@ -74,44 +74,50 @@ def cleanup_old_sharepoint_entries(days_to_keep=3):
         errors = []
         
         # Process each country's SharePoint files
-        countries = config.get('countries', {})
+        countries = config.get('COUNTRIES', {})
         
         for country_code, country_config in countries.items():
-            if not country_config.get('enabled', False):
-                LOGGER.writeLog(f"ℹ️  Skipping disabled country: {country_code}")
-                continue
-                
-            country_sharepoint = country_config.get('sharepoint', {})
+            country_sharepoint = country_config.get('sharepoint_config', {})
             if not country_sharepoint:
                 LOGGER.writeLog(f"⚠️  No SharePoint config for country: {country_code}")
                 continue
             
             try:
-                # Process significant messages file
-                significant_file = country_sharepoint.get('significant_file_path')
-                if significant_file:
-                    deleted_count = await cleanup_sharepoint_file(
-                        sharepoint_config, 
-                        significant_file, 
-                        cutoff_date_str, 
-                        country_code, 
-                        "significant"
-                    )
-                    total_deleted += deleted_count
-                    processed_files += 1
+                # Build file path from sharepoint_config
+                site_name = country_sharepoint.get('site_name', 'ATCSharedFiles')
+                folder_path = country_sharepoint.get('folder_path', '/Telegram_Feeds/')
+                file_name = country_sharepoint.get('file_name', f'{country_code}_Telegram_Feed.xlsx')
+                full_file_path = f"{folder_path}{file_name}"
                 
-                # Process trivial messages file  
-                trivial_file = country_sharepoint.get('trivial_file_path')
-                if trivial_file:
-                    deleted_count = await cleanup_sharepoint_file(
-                        sharepoint_config, 
-                        trivial_file, 
-                        cutoff_date_str, 
-                        country_code, 
-                        "trivial"
-                    )
-                    total_deleted += deleted_count
-                    processed_files += 1
+                # Process both significant and trivial sheets in the same file
+                significant_sheet = country_sharepoint.get('significant_sheet', 'Significant')
+                trivial_sheet = country_sharepoint.get('trivial_sheet', 'Trivial')
+                
+                # Clean significant sheet
+                deleted_count = asyncio.run(cleanup_sharepoint_file(
+                    ms_sharepoint_config,
+                    site_name, 
+                    full_file_path, 
+                    significant_sheet,
+                    cutoff_date_str, 
+                    country_code, 
+                    "significant"
+                ))
+                total_deleted += deleted_count
+                processed_files += 1
+                
+                # Clean trivial sheet
+                deleted_count = asyncio.run(cleanup_sharepoint_file(
+                    ms_sharepoint_config,
+                    site_name, 
+                    full_file_path, 
+                    trivial_sheet,
+                    cutoff_date_str, 
+                    country_code, 
+                    "trivial"
+                ))
+                total_deleted += deleted_count
+                processed_files += 1
                     
             except Exception as e:
                 error_msg = f"Failed to clean SharePoint files for {country_code}: {e}"
@@ -160,13 +166,15 @@ def cleanup_old_sharepoint_entries(days_to_keep=3):
         return {"status": "error", "message": error_msg}
 
 
-async def cleanup_sharepoint_file(sharepoint_config, file_path, cutoff_date_str, country_code, file_type):
+async def cleanup_sharepoint_file(ms_sharepoint_config, site_name, file_path, sheet_name, cutoff_date_str, country_code, file_type):
     """
-    Clean up a specific SharePoint Excel file
+    Clean up a specific SharePoint Excel sheet
     
     Args:
-        sharepoint_config: SharePoint connection configuration
+        ms_sharepoint_config: MS SharePoint access configuration
+        site_name: SharePoint site name
         file_path: Path to the Excel file in SharePoint
+        sheet_name: Name of the worksheet to clean
         cutoff_date_str: Cutoff date in YYYY-MM-DD format
         country_code: Country code for logging
         file_type: "significant" or "trivial" for logging
@@ -177,28 +185,25 @@ async def cleanup_sharepoint_file(sharepoint_config, file_path, cutoff_date_str,
     sharepoint_processor = None
     
     try:
-        LOGGER.writeLog(f"🔍 Cleaning {file_type} file for {country_code}: {file_path}")
+        LOGGER.writeLog(f"🔍 Cleaning {file_type} sheet '{sheet_name}' for {country_code}: {file_path}")
         
         # Initialize SharePoint connection with session management
         sharepoint_processor = SharepointProcessor(
-            clientID=sharepoint_config['client_id'],
-            clientSecret=sharepoint_config['client_secret'], 
-            tenantID=sharepoint_config['tenant_id'],
-            spSite=sharepoint_config['site_url'],
-            siteName=sharepoint_config['site_name'],
+            clientID=ms_sharepoint_config['ClientID'],
+            clientSecret=ms_sharepoint_config['ClientSecret'], 
+            tenantID=ms_sharepoint_config['TenantID'],
+            spSite=ms_sharepoint_config['SharepointSite'],
+            siteName=site_name,
             filePath=file_path
         )
         
         if not sharepoint_processor.isConnectedToSharepointFile():
             raise Exception("Failed to connect to SharePoint file")
         
-        # Get the worksheet (assuming first worksheet or "Sheet1")
-        worksheet_name = "Sheet1"  # This might need to be configurable
-        
-        # Find and delete old entries
+        # Find and delete old entries from the specified sheet
         deleted_count = await delete_old_entries_from_worksheet(
             sharepoint_processor, 
-            worksheet_name, 
+            sheet_name, 
             cutoff_date_str
         )
         
@@ -280,25 +285,42 @@ async def delete_old_entries_from_worksheet(sharepoint_processor, worksheet_name
                     if date_value:
                         # Handle different date formats
                         date_str = str(date_value)
+                        entry_date = None
+                        
                         if date_str.startswith('Date('):
-                            # Excel serial date format: Date(1234567890000)
+                            # Excel Graph API timestamp format: Date(1234567890000)
                             import re
                             match = re.search(r'Date\((\d+)\)', date_str)
                             if match:
                                 timestamp = int(match.group(1)) / 1000  # Convert from milliseconds
                                 entry_date = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d')
-                            else:
+                        elif date_str.replace('.', '').isdigit():
+                            # Excel serial date number (e.g., 45963)
+                            try:
+                                serial_number = float(date_str)
+                                # Excel epoch starts from 1900-01-01, but Excel incorrectly treats 1900 as a leap year
+                                # So we need to subtract 2 days: 1 for the 1900 leap year bug, 1 for 0-based indexing
+                                excel_epoch = datetime(1899, 12, 30)  # Adjusted epoch
+                                entry_datetime = excel_epoch + timedelta(days=serial_number)
+                                entry_date = entry_datetime.strftime('%Y-%m-%d')
+                                LOGGER.writeLog(f"📅 Converted Excel serial {serial_number} to {entry_date}")
+                            except (ValueError, OverflowError) as e:
+                                LOGGER.writeLog(f"⚠️  Invalid Excel serial number: {date_str} - {e}")
                                 continue
                         else:
-                            # Try to parse as standard date
+                            # Try to parse as standard date string
                             try:
                                 # Handle YYYY-MM-DD format
                                 if len(date_str) >= 10:
                                     entry_date = date_str[:10]  # Take first 10 characters
-                                else:
-                                    continue
-                            except:
+                                    # Validate the date format
+                                    datetime.strptime(entry_date, '%Y-%m-%d')
+                            except (ValueError, IndexError):
+                                LOGGER.writeLog(f"⚠️  Unrecognized date format: {date_str}")
                                 continue
+                        
+                        if not entry_date:
+                            continue
                         
                         # Compare dates
                         if entry_date < cutoff_date_str:
