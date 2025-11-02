@@ -9,6 +9,7 @@ LOGS_DIR="/home/ubuntu/TelegramScraper/telegram-ai-scraper/logs"
 DAYS_TO_KEEP=3
 TEMP_DIR="/tmp/log_cleanup_$$"
 SCRIPT_LOG="$LOGS_DIR/cleanup_log_entries.log"
+EARLY_TERMINATION_THRESHOLD=5
 
 # Colors for output
 RED='\033[0;31m'
@@ -57,9 +58,12 @@ clean_log_file() {
     local log_file="$1"
     local temp_file="$TEMP_DIR/$(basename "$log_file")"
     local lock_file="${log_file}.cleanup_lock"
-    local cutoff_epoch=$(date -d "$DAYS_TO_KEEP days ago" +%s)
+    # Calculate cutoff in Manila timezone (UTC+8) to match log timestamps
+    # Calculate cutoff at midnight (00:00) of the cutoff date in Manila timezone
+    local cutoff_date_only=$(TZ='Asia/Manila' date -d "$DAYS_TO_KEEP days ago" '+%Y-%m-%d')
+    local cutoff_epoch=$(TZ='Asia/Manila' date -d "$cutoff_date_only 00:00:00" +%s)
     # Also expose a human-friendly cutoff date for logging/debug
-    local cutoff_date_human=$(date -d "$DAYS_TO_KEEP days ago" '+%Y-%m-%d %H:%M:%S')
+    local cutoff_date_human="$cutoff_date_only 00:00:00 Manila"
     local original_lines=0
     local kept_lines=0
     local removed_lines=0
@@ -91,6 +95,10 @@ clean_log_file() {
     
     original_lines=$(wc -l < "$log_file")
     
+    # Early termination optimization variables
+    local consecutive_new_entries=0
+    local early_terminated=false
+    
     # Process the log file line by line
     while IFS= read -r line || [[ -n "$line" ]]; do
         if has_valid_timestamp "$line"; then
@@ -102,21 +110,39 @@ clean_log_file() {
             local entry_time_part="${timestamp:9}"
             local entry_date_formatted="${entry_date_part:0:4}-${entry_date_part:4:2}-${entry_date_part:6:2}"
 
-            # Convert to epoch using date -d (more robust)
+            # Convert to epoch using Manila timezone to match log timestamp format
             local line_epoch=0
-            if line_epoch=$(date -d "${entry_date_formatted} ${entry_time_part}" +%s 2>/dev/null); then
+            if line_epoch=$(TZ='Asia/Manila' date -d "${entry_date_formatted} ${entry_time_part}" +%s 2>/dev/null); then
                 # Keep line if timestamp is valid and within retention period
                 if [[ -n "$line_epoch" ]] && [[ $line_epoch -gt $cutoff_epoch ]]; then
                     echo "$line" >> "$temp_file"
                     ((kept_lines++))
+                    
+                    # Increment consecutive new entries counter for early termination
+                    ((consecutive_new_entries++))
+                    
+                    # Early termination: if we've seen enough consecutive new entries,
+                    # assume the rest of the file is also new (chronological order)
+                    if [[ $consecutive_new_entries -ge $EARLY_TERMINATION_THRESHOLD ]]; then
+                        early_terminated=true
+                        # Copy the rest of the file without processing each line
+                        while IFS= read -r remaining_line || [[ -n "$remaining_line" ]]; do
+                            echo "$remaining_line" >> "$temp_file"
+                            ((kept_lines++))
+                        done
+                        break
+                    fi
                 else
                     ((removed_lines++))
+                    # Reset consecutive counter when we find an old entry
+                    consecutive_new_entries=0
                 fi
             else
                 # If we cannot parse the date/time properly, treat it as malformed and keep it
                 # to avoid accidental data loss
                 echo "$line" >> "$temp_file"
                 ((kept_lines++))
+                # Don't count malformed timestamps toward consecutive new entries
             fi
         else
             # Keep lines without timestamps (might be multi-line entries or stack traces)
@@ -127,13 +153,18 @@ clean_log_file() {
             else
                 ((removed_lines++))
             fi
+            # Don't count non-timestamp lines toward consecutive new entries
         fi
     done < "$log_file"
     
     # Atomically replace original file with cleaned version
     if [[ -f "$temp_file" ]] && [[ -s "$temp_file" ]]; then
         if mv "$temp_file" "$log_file"; then
-            log_message "${GREEN}✅ Cleaned $(basename "$log_file"): ${original_lines} → ${kept_lines} lines (removed ${removed_lines})${NC}"
+            local termination_msg=""
+            if [[ "$early_terminated" == true ]]; then
+                termination_msg=" [fast-forward after ${EARLY_TERMINATION_THRESHOLD} consecutive new entries]"
+            fi
+            log_message "${GREEN}✅ Cleaned $(basename "$log_file"): ${original_lines} → ${kept_lines} lines (removed ${removed_lines})${termination_msg}${NC}"
         else
             log_message "${RED}❌ Failed to update $(basename "$log_file")${NC}"
             rm -f "$temp_file"
@@ -164,9 +195,9 @@ main() {
     # Cleanup trap (also clean up any stale locks)
     trap "rm -rf '$TEMP_DIR'; find '$LOGS_DIR' -name '*.cleanup_lock' -mmin +60 -delete 2>/dev/null" EXIT
     
-    # Get cutoff date for logging
-    local cutoff_date=$(date -d "$DAYS_TO_KEEP days ago" '+%Y-%m-%d %H:%M:%S')
-    log_message "Cutoff date: $cutoff_date"
+    # Get cutoff date for logging (midnight of the cutoff date in Manila timezone)
+    local cutoff_date_only=$(TZ='Asia/Manila' date -d "$DAYS_TO_KEEP days ago" '+%Y-%m-%d')
+    log_message "Cutoff date: $cutoff_date_only 00:00:00 Manila (entries before this will be deleted)"
     
     # Counter for statistics
     local total_files=0
