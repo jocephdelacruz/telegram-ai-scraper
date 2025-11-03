@@ -354,11 +354,190 @@ async def delete_old_entries_from_worksheet(sharepoint_processor, worksheet_name
             except Exception as e:
                 LOGGER.writeLog(f"❌ Error deleting row {row_index}: {e}")
         
+        # Post-deletion cleanup: Remove blank rows and adjust table size
+        if deleted_count > 0:
+            LOGGER.writeLog(f"🔧 Starting post-deletion cleanup for {worksheet_name}")
+            await cleanup_blank_rows_and_adjust_table(sharepoint_processor, worksheet_name)
+        
         return deleted_count
         
     except Exception as e:
         LOGGER.writeLog(f"❌ Error identifying old entries in {worksheet_name}: {e}")
         raise
+
+
+async def cleanup_blank_rows_and_adjust_table(sharepoint_processor, worksheet_name):
+    """
+    Clean up blank rows between data and adjust table size to ensure continuity
+    
+    This function:
+    1. Scans the worksheet for blank rows between data groups
+    2. Deletes any blank rows found
+    3. Adjusts the table size to include all data without gaps
+    4. Ensures new entries will be added to the correct location
+    
+    Args:
+        sharepoint_processor: SharePoint processor instance
+        worksheet_name: Name of the worksheet
+    """
+    try:
+        LOGGER.writeLog(f"🔧 Scanning {worksheet_name} for blank rows and table adjustments")
+        
+        # Wait a moment for the previous deletions to be fully processed
+        await asyncio.sleep(2)
+        
+        # Get the current used range after deletions
+        used_range_response = sharepoint_processor._make_api_request(
+            "GET",
+            f"https://graph.microsoft.com/v1.0/sites/{sharepoint_processor.siteID}/drive/items/{sharepoint_processor.fileID}/workbook/worksheets/{worksheet_name}/usedRange"
+        )
+        
+        if not used_range_response or used_range_response.status_code != 200:
+            LOGGER.writeLog(f"⚠️  Could not get used range for blank row cleanup in {worksheet_name}")
+            return
+        
+        used_range_data = used_range_response.json()
+        values = used_range_data.get('values', [])
+        
+        if len(values) <= 1:  # Only header or empty
+            LOGGER.writeLog(f"ℹ️  No data rows to process for blank row cleanup in {worksheet_name}")
+            return
+        
+        # Find blank rows between data (skip header row)
+        blank_rows_to_delete = []
+        last_data_row = 1  # Start after header
+        
+        for row_index, row_data in enumerate(values[1:], start=2):  # Start from row 2
+            # Check if row is completely empty or has only empty cells
+            is_blank_row = True
+            if row_data:
+                for cell_value in row_data:
+                    if cell_value is not None and str(cell_value).strip():
+                        is_blank_row = False
+                        break
+            
+            if is_blank_row:
+                # This is a blank row - check if there's data after it
+                has_data_after = False
+                for future_row_index in range(row_index, len(values)):
+                    future_row_data = values[future_row_index]
+                    if future_row_data:
+                        for cell_value in future_row_data:
+                            if cell_value is not None and str(cell_value).strip():
+                                has_data_after = True
+                                break
+                    if has_data_after:
+                        break
+                
+                # If there's data after this blank row, mark it for deletion
+                if has_data_after:
+                    blank_rows_to_delete.append(row_index)
+                    LOGGER.writeLog(f"📍 Found blank row {row_index} with data after it")
+            else:
+                last_data_row = row_index
+        
+        # Delete blank rows from bottom to top
+        if blank_rows_to_delete:
+            LOGGER.writeLog(f"🗑️  Deleting {len(blank_rows_to_delete)} blank rows from {worksheet_name}")
+            
+            for row_index in sorted(blank_rows_to_delete, reverse=True):
+                try:
+                    success = await delete_worksheet_row(sharepoint_processor, worksheet_name, row_index)
+                    if success:
+                        LOGGER.writeLog(f"✅ Deleted blank row {row_index}")
+                    else:
+                        LOGGER.writeLog(f"⚠️  Failed to delete blank row {row_index}")
+                    
+                    # Small delay between deletions
+                    await asyncio.sleep(0.2)
+                    
+                except Exception as e:
+                    LOGGER.writeLog(f"❌ Error deleting blank row {row_index}: {e}")
+        
+        # Wait for deletions to be processed
+        await asyncio.sleep(2)
+        
+        # Now try to adjust the table size to ensure continuity
+        await adjust_table_size(sharepoint_processor, worksheet_name)
+        
+        LOGGER.writeLog(f"✅ Blank row cleanup completed for {worksheet_name}")
+        
+    except Exception as e:
+        LOGGER.writeLog(f"❌ Error during blank row cleanup for {worksheet_name}: {e}")
+
+
+async def adjust_table_size(sharepoint_processor, worksheet_name):
+    """
+    Adjust the table size to include all data without gaps
+    
+    Args:
+        sharepoint_processor: SharePoint processor instance
+        worksheet_name: Name of the worksheet
+    """
+    try:
+        LOGGER.writeLog(f"📏 Adjusting table size for {worksheet_name}")
+        
+        # Get the current used range after blank row cleanup
+        used_range_response = sharepoint_processor._make_api_request(
+            "GET",
+            f"https://graph.microsoft.com/v1.0/sites/{sharepoint_processor.siteID}/drive/items/{sharepoint_processor.fileID}/workbook/worksheets/{worksheet_name}/usedRange"
+        )
+        
+        if not used_range_response or used_range_response.status_code != 200:
+            LOGGER.writeLog(f"⚠️  Could not get used range for table adjustment in {worksheet_name}")
+            return
+        
+        used_range_data = used_range_response.json()
+        address = used_range_data.get('address', '')
+        
+        if not address:
+            LOGGER.writeLog(f"⚠️  No address found in used range for {worksheet_name}")
+            return
+        
+        # Extract the worksheet name and range from address (format: 'WorksheetName'!A1:K1234)
+        if '!' in address:
+            range_part = address.split('!')[-1]  # Get the range part (e.g., A1:K1234)
+        else:
+            range_part = address
+        
+        LOGGER.writeLog(f"📐 Current used range for {worksheet_name}: {range_part}")
+        
+        # Try to get existing table information
+        tables_response = sharepoint_processor._make_api_request(
+            "GET",
+            f"https://graph.microsoft.com/v1.0/sites/{sharepoint_processor.siteID}/drive/items/{sharepoint_processor.fileID}/workbook/worksheets/{worksheet_name}/tables"
+        )
+        
+        if tables_response and tables_response.status_code == 200:
+            tables_data = tables_response.json()
+            tables = tables_data.get('value', [])
+            
+            if tables:
+                # Update the first table found to match the used range
+                table_id = tables[0].get('id', '')
+                if table_id:
+                    LOGGER.writeLog(f"🔄 Updating table {table_id} to range {range_part}")
+                    
+                    # Resize the table to match the used range
+                    resize_response = sharepoint_processor._make_api_request(
+                        "POST",
+                        f"https://graph.microsoft.com/v1.0/sites/{sharepoint_processor.siteID}/drive/items/{sharepoint_processor.fileID}/workbook/worksheets/{worksheet_name}/tables/{table_id}/resize",
+                        json={"address": range_part}
+                    )
+                    
+                    if resize_response and resize_response.status_code in [200, 204]:
+                        LOGGER.writeLog(f"✅ Successfully resized table to {range_part}")
+                    else:
+                        LOGGER.writeLog(f"⚠️  Table resize failed, status: {resize_response.status_code if resize_response else 'No response'}")
+                else:
+                    LOGGER.writeLog(f"⚠️  No table ID found for {worksheet_name}")
+            else:
+                LOGGER.writeLog(f"ℹ️  No tables found in {worksheet_name} to adjust")
+        else:
+            LOGGER.writeLog(f"⚠️  Could not get table information for {worksheet_name}")
+        
+    except Exception as e:
+        LOGGER.writeLog(f"❌ Error adjusting table size for {worksheet_name}: {e}")
 
 
 async def delete_worksheet_row(sharepoint_processor, worksheet_name, row_index):
