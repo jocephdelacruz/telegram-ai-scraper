@@ -408,6 +408,123 @@ class TelegramScraper:
             return None
 
 
+    async def parse_message_efficiently(self, message, channel_username):
+        """
+        Parse a Telegram message into a structured format WITHOUT making additional API calls
+        
+        This efficient version avoids accessing properties like message.sender and message.forward.chat
+        that trigger additional Telegram API calls, which can cause session expiration.
+        
+        Key differences from parse_message():
+        - Uses message.from_id instead of message.sender (no API call)
+        - Uses message.post_author for channel posts (no API call)
+        - Uses message.forward.from_id instead of message.forward.chat (no API call)
+        
+        Args:
+            message: Telegram message object
+            channel_username: Channel username
+            
+        Returns:
+            Dictionary with message data
+        """
+        try:
+            # Skip empty messages
+            if not message.text and not message.media:
+                return None
+
+            # Generate Telegram message URL
+            clean_channel = channel_username.lstrip('@')
+            message_url = f"https://t.me/{clean_channel}/{message.id}"
+
+            message_data = {
+                'Message_ID': message.id,
+                'Channel': channel_username,
+                'Message_URL': message_url,
+                'Date': message.date.strftime('%Y-%m-%d'),
+                'Time': message.date.strftime('%H:%M:%S'),
+                'Datetime_UTC': message.date,
+                'Author': '',
+                'Message_Text': message.text or '',
+                'Attached_Links': '',
+                'AI_Category': '',
+                'Keywords_Matched': '',
+                'Message_Type': 'text',
+                'Forward_From': '',
+                'Media_Type': '',
+                'Processed_Date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            }
+
+            # Get author information WITHOUT API calls
+            author = ""
+            try:
+                # Method 1: Use post_author (for channel posts) - NO API call
+                if hasattr(message, 'post_author') and message.post_author:
+                    author = message.post_author
+                # Method 2: Use from_id (for user messages) - NO API call
+                elif hasattr(message, 'from_id') and message.from_id:
+                    if hasattr(message.from_id, 'user_id'):
+                        author = f"User_{message.from_id.user_id}"
+                    elif hasattr(message.from_id, 'channel_id'):
+                        author = f"Channel_{message.from_id.channel_id}"
+                    else:
+                        author = f"ID_{message.from_id}"
+            except Exception as author_error:
+                LOGGER.writeDebugLog(f"Could not get author info: {author_error}")
+                author = "Unknown"
+            
+            message_data['Author'] = author
+
+            # Check if message is forwarded WITHOUT API calls
+            forward_from = ""
+            try:
+                if message.forward:
+                    # Method 1: Use from_name if available (no API call)
+                    if message.forward.from_name:
+                        forward_from = message.forward.from_name
+                    # Method 2: Use from_id instead of fetching chat entity (no API call)
+                    elif hasattr(message.forward, 'from_id') and message.forward.from_id:
+                        if hasattr(message.forward.from_id, 'user_id'):
+                            forward_from = f"User_{message.forward.from_id.user_id}"
+                        elif hasattr(message.forward.from_id, 'channel_id'):
+                            forward_from = f"Channel_{message.forward.from_id.channel_id}"
+                        else:
+                            forward_from = f"ID_{message.forward.from_id}"
+                    # Method 3: Use channel_id if available (no API call)
+                    elif hasattr(message.forward, 'channel_id') and message.forward.channel_id:
+                        forward_from = f"Channel_{message.forward.channel_id}"
+            except Exception as forward_error:
+                LOGGER.writeDebugLog(f"Could not get forward info: {forward_error}")
+            
+            message_data['Forward_From'] = forward_from
+
+            # Determine message type and media (same as original - no API calls here)
+            if message.media:
+                if isinstance(message.media, MessageMediaPhoto):
+                    message_data['Message_Type'] = 'photo'
+                    message_data['Media_Type'] = 'photo'
+                elif isinstance(message.media, MessageMediaDocument):
+                    message_data['Message_Type'] = 'document'
+                    message_data['Media_Type'] = 'document'
+                    if message.media.document.mime_type:
+                        if 'video' in message.media.document.mime_type:
+                            message_data['Media_Type'] = 'video'
+                        elif 'audio' in message.media.document.mime_type:
+                            message_data['Media_Type'] = 'audio'
+                elif isinstance(message.media, MessageMediaWebPage):
+                    message_data['Message_Type'] = 'webpage'
+                    message_data['Media_Type'] = 'webpage'
+                    if message.media.webpage.url:
+                        message_data['Message_Text'] += f"\n\nURL: {message.media.webpage.url}"
+
+            # Extract attached links (same as original)
+            message_data['Attached_Links'] = self._extract_attached_links(message)
+
+            return message_data
+        except Exception as e:
+            LOGGER.writeLog(f"Error parsing message efficiently {message.id}: {e}")
+            return None
+
+
     def _extract_attached_links(self, message):
         """
         Extract all attached links from a Telegram message using multiple methods
@@ -684,7 +801,7 @@ class TelegramScraper:
         """
         try:
             # Safety limit to prevent API abuse and phone logout
-            MAX_SAFE_LIMIT = 50
+            MAX_SAFE_LIMIT = 20
             safe_limit = min(limit, MAX_SAFE_LIMIT)
             
             # Get channel entity
@@ -728,8 +845,8 @@ class TelegramScraper:
                         old_messages += 1
                         continue
                     
-                    # Parse the message
-                    message_data = await self.parse_message(message, channel_username)
+                    # Parse the message efficiently (no additional API calls)
+                    message_data = await self.parse_message_efficiently(message, channel_username)
                     if not message_data:
                         continue
                     
@@ -763,8 +880,8 @@ class TelegramScraper:
                         old_messages += 1
                         continue
                     
-                    # Parse the message
-                    message_data = await self.parse_message(message, channel_username)
+                    # Parse the message efficiently (no additional API calls)
+                    message_data = await self.parse_message_efficiently(message, channel_username)
                     if not message_data:
                         continue
                     
@@ -900,8 +1017,8 @@ class TelegramScraper:
                         skipped_old += 1
                         continue
                     
-                    # Parse and add the message
-                    message_data = await self.parse_message(message, channel_username)
+                    # Parse and add the message efficiently (no additional API calls)
+                    message_data = await self.parse_message_efficiently(message, channel_username)
                     if message_data:
                         # Check for duplicates using Redis if available
                         if redis_client:
@@ -945,8 +1062,8 @@ class TelegramScraper:
                         skipped_old += 1
                         continue
                     
-                    # Parse and add the message
-                    message_data = await self.parse_message(message, channel_username)
+                    # Parse and add the message efficiently (no additional API calls)
+                    message_data = await self.parse_message_efficiently(message, channel_username)
                     if message_data:
                         # Check for duplicates using Redis if available
                         if redis_client:
