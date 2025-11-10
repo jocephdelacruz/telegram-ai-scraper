@@ -25,23 +25,32 @@ log_message() {
     echo -e "[$timestamp]: $message" | tee -a "$SCRIPT_LOG"
 }
 
-# Function to check if a line has a valid timestamp
+# Function to check if a line has a valid timestamp (supports both LogHandling and Celery formats)
 has_valid_timestamp() {
     local line="$1"
-    # Check if line starts with [YYYYMMDD_HH:MM:SS]
+    # Check if line starts with [YYYYMMDD_HH:MM:SS]: (LogHandling format)
     if [[ $line =~ ^\[20[0-9]{6}_[0-9]{2}:[0-9]{2}:[0-9]{2}\]: ]]; then
+        return 0
+    # Check if line starts with [YYYY-MM-DD HH:MM:SS,ms: LEVEL/Process] (Celery format)
+    elif [[ $line =~ ^\[20[0-9]{2}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2},[0-9]{3}:\ [A-Z]+/[^]]+\] ]]; then
         return 0
     else
         return 1
     fi
 }
 
-# Function to extract timestamp from log line
+# Function to extract timestamp from log line (supports both formats)
 extract_timestamp() {
     local line="$1"
-    # Extract timestamp from [YYYYMMDD_HH:MM:SS] format
+    # Extract timestamp from [YYYYMMDD_HH:MM:SS]: format (LogHandling)
     if [[ $line =~ ^\[([0-9]{8}_[0-9]{2}:[0-9]{2}:[0-9]{2})\]: ]]; then
         echo "${BASH_REMATCH[1]}"
+    # Extract timestamp from [YYYY-MM-DD HH:MM:SS,ms: format (Celery)
+    elif [[ $line =~ ^\[([0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}),[0-9]{3}: ]]; then
+        # Convert Celery format to LogHandling format: 2025-11-07 04:01:39 -> 20251107_04:01:39
+        local celery_timestamp="${BASH_REMATCH[1]}"
+        local converted_timestamp="${celery_timestamp:0:4}${celery_timestamp:5:2}${celery_timestamp:8:2}_${celery_timestamp:11:8}"
+        echo "$converted_timestamp"
     fi
 }
 
