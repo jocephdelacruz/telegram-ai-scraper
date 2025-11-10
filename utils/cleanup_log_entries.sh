@@ -188,7 +188,7 @@ clean_log_file() {
 # Main execution
 main() {
     log_message "${BLUE}🧹 Starting log cleanup - removing entries older than ${DAYS_TO_KEEP} days${NC}"
-    
+    DAYS_TO_KEEP=$((DAYS_TO_KEEP - 1))      # Adjust to keep logs similar to csv cleanup
     # Create temporary directory
     mkdir -p "$TEMP_DIR"
     

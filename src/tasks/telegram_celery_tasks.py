@@ -777,30 +777,28 @@ def cleanup_redis_entries():
 def fetch_new_messages_from_all_channels(self):
     """
     Periodic task to fetch new messages from all configured channels
-    This runs based on configurable interval and only fetches messages newer than the configured age limit
-    CRITICAL: This task now includes session safety protection to prevent concurrent
-    Telegram session access that can cause phone logout issues.
+    Uses session safety manager with Redis-based locking to prevent concurrent fetches
     """
+    from src.integrations.session_safety import SessionSafetyManager, SessionSafetyError
+    
+    safety_manager = SessionSafetyManager()
+    
+    # Check session safety and acquire lock (integrated approach)
     try:
-        # 🛡️ CRITICAL SESSION SAFETY CHECK - Prevent concurrent access that causes phone logout
-        from src.integrations.session_safety import SessionSafetyManager, SessionSafetyError
-        
-        safety_manager = SessionSafetyManager()
-        try:
-            safety_manager.check_session_safety("periodic_fetch")
-            LOGGER.writeLog("✅ Session safety check passed - safe to start periodic fetch")
-        except SessionSafetyError as safety_error:
-            # Multiple workers trying to access session - abort this attempt
-            LOGGER.writeLog(f"🛡️ SESSION SAFETY ABORT: {safety_error}")
-            LOGGER.writeLog("⏸️  Skipping this periodic fetch to prevent phone logout")
-            return {
-                "status": "skipped_for_safety",
-                "timestamp": datetime.now().isoformat(),
-                "reason": "Session safety protection active - prevented concurrent access",
-                "channels_checked": 0,
-                "messages_processed": 0,
-                "messages_skipped": 0
-            }
+        safety_manager.check_session_safety("periodic_fetch")
+        LOGGER.writeLog("� Session safety check passed - starting periodic message fetch")
+    except SessionSafetyError as e:
+        LOGGER.writeLog(f"🔒 Session safety check failed: {e}")
+        return {
+            "status": "skipped_safety",
+            "timestamp": datetime.now().isoformat(),
+            "reason": str(e),
+            "channels_checked": 0,
+            "messages_processed": 0,
+            "messages_skipped": 0
+        }
+    
+    try:
         
         LOGGER.writeLog("Starting periodic message fetch from all channels")
         
@@ -861,15 +859,15 @@ def fetch_new_messages_from_all_channels(self):
         if not all(key in telegram_config for key in ['API_ID', 'API_HASH', 'PHONE_NUMBER']):
             raise Exception("Telegram configuration incomplete")
         
-        # 🛡️ Additional safety check before creating scraper (double protection)
-        LOGGER.writeLog("🔐 Performing final session safety verification before Telegram client creation")
-        safety_manager = SessionSafetyManager()
-        try:
-            safety_manager.check_session_safety("telegram_client_creation")
-            LOGGER.writeLog("✅ Final session safety verified - proceeding with client creation")
-        except SessionSafetyError:
-            LOGGER.writeLog("🛡️ ABORT: Session safety check failed at client creation - preventing phone logout")
-            raise Exception("Session safety protection triggered - concurrent access detected")
+        # # 🛡️ Additional safety check before creating scraper (double protection)
+        # LOGGER.writeLog("🔐 Performing final session safety verification before Telegram client creation")
+        # safety_manager = SessionSafetyManager()
+        # try:
+        #     safety_manager.check_session_safety("telegram_client_creation")
+        #     LOGGER.writeLog("✅ Final session safety verified - proceeding with client creation")
+        # except SessionSafetyError:
+        #     LOGGER.writeLog("🛡️ ABORT: Session safety check failed at client creation - preventing phone logout")
+        #     raise Exception("Session safety protection triggered - concurrent access detected")
 
         telegram_scraper = TelegramScraper(
             telegram_config['API_ID'],
@@ -883,7 +881,7 @@ def fetch_new_messages_from_all_channels(self):
             fetch_messages_async(telegram_scraper, all_channels, config, cutoff_time, message_limit)
         )
         
-        LOGGER.writeLog(f"Periodic message fetch completed. New messages processed: {total_messages}, " +
+        LOGGER.writeLog(f"✅ Periodic message fetch completed. New messages processed: {total_messages}, " +
                        f"skipped (too old): {skipped_messages}")
        
         return {
@@ -910,51 +908,21 @@ def fetch_new_messages_from_all_channels(self):
         }
         
     except TelegramSessionError as e:
-        # Session issue - CHECK SESSION SAFETY before retry to prevent phone logout
+        # Session issue - log but don't retry to avoid cascading failures
         LOGGER.writeLog(f"🔐 SESSION ISSUE: {e}")
-
-        # CRITICAL: Check if session safety allows retry to prevent phone logout
-        try:
-            from src.integrations.session_safety import SessionSafetyManager, SessionSafetyError
-            safety = SessionSafetyManager()
-            safety.check_session_safety("celery_task_retry_validation")
-            LOGGER.writeLog("✅ Session safety verified - safe to retry")
-        except Exception as safety_error:
-            LOGGER.writeLog(f"� CRITICAL: Session safety check failed - {safety_error}")
-            LOGGER.writeLog("🛑 ABORTING RETRY to prevent phone logout!")
-            LOGGER.writeLog("💡 Please stop all workers, renew session, then restart workers")
-            LOGGER.writeLog("💡 Commands: ./scripts/deploy_celery.sh stop && ./scripts/telegram_session.sh renew && ./scripts/deploy_celery.sh start")
-            
-            # Return failure instead of retry to prevent dangerous session access
-            return {
-                "status": "session_safety_abort",
-                "timestamp": datetime.now().isoformat(),
-                "error": f"Session retry aborted for safety: {safety_error}",
-                "channels_checked": 0,
-                "messages_processed": 0,
-                "messages_skipped": 0,
-                "action_required": "stop_workers_renew_session_restart"
-            }
-        
-        # Only retry if session safety allows it
-
-        if self.request.retries < 2:  # Only retry twice for session issues
-            LOGGER.writeLog("🔄 Will retry with 5-minute backoff (session safety verified)")
-            raise self.retry(exc=e, countdown=300)  # Wait 5 minutes before retry
-        else:
-            LOGGER.writeLog("❌ SESSION ISSUE: Max retries reached, stopping periodic fetch. Run 'python3 scripts/telegram_auth.py' to re-authenticate.")
-            return {
-                "status": "session_error",
-                "timestamp": datetime.now().isoformat(),
-                "error": str(e),
-                "channels_checked": 0,
-                "messages_processed": 0,
-                "messages_skipped": 0
-            }
+        LOGGER.writeLog("❌ Session error during fetch - not retrying to prevent phone logout risk")
+        return {
+            "status": "session_error",
+            "timestamp": datetime.now().isoformat(),
+            "error": str(e),
+            "channels_checked": 0,
+            "messages_processed": 0,
+            "messages_skipped": 0
+        }
             
     except TelegramAuthError as e:
         # Authentication issue - don't retry, needs manual intervention
-        LOGGER.writeLog(f"🚨 TELEGRAM AUTH ERROR: {e}")
+        LOGGER.writeLog(f"� TELEGRAM AUTH ERROR: {e}")
         LOGGER.writeLog("💡 Check your API credentials in config.json or re-authenticate with 'python3 scripts/telegram_auth.py'")
         return {
             "status": "auth_error",
@@ -966,10 +934,29 @@ def fetch_new_messages_from_all_channels(self):
         }
         
     except Exception as e:
-        # Other errors - use normal retry logic
+        # Other errors - use normal retry logic but don't retry timeout errors
         error_msg = str(e)
         LOGGER.writeLog(f"❌ Error in periodic message fetch: {error_msg}")
+        
+        # Don't retry if it's a timeout - that indicates a deeper issue
+        if "timeout" in str(e).lower():
+            LOGGER.writeLog("⏰ Fetch timed out - not retrying to prevent cascading issues")
+            return {
+                "status": "timeout",
+                "timestamp": datetime.now().isoformat(),
+                "error": str(e),
+                "channels_checked": 0,
+                "messages_processed": 0,
+                "messages_skipped": 0
+            }
+        
         raise self.retry(exc=e)
+        
+    finally:
+        # Always release the Redis lock
+        if 'safety_manager' in locals():
+            safety_manager.release_fetch_lock()
+            LOGGER.writeLog("🔓 Redis fetch lock released")
 
 
 async def fetch_messages_async(telegram_scraper, all_channels, config, cutoff_time, message_limit):
