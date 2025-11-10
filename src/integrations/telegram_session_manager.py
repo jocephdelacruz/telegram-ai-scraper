@@ -134,7 +134,7 @@ class TelegramSessionManager:
         try:
             self.client = TelegramClient(self.session_file, self.api_id, self.api_hash)
             
-            LOGGER.writeLog(f"Attempting to start Telegram client (attempt {self.connection_attempts}) with session lock")
+            LOGGER.writeDebugLog(f"Attempting to start Telegram client (attempt {self.connection_attempts}) with session lock")
             
             # Start the client with phone authentication
             await self.client.start(phone=self.phone_number)
@@ -250,7 +250,7 @@ class TelegramSessionManager:
         if not me:
             raise Exception("Failed to retrieve user information")
         
-        LOGGER.writeLog(f"✅ Connection test successful - connected as {me.first_name}")
+        LOGGER.writeDebugLog(f"✅ Connection test successful - connected as {me.first_name}")
     
     async def _handle_corrupted_session(self):
         """Handle corrupted session by backing up and clearing"""
@@ -261,7 +261,7 @@ class TelegramSessionManager:
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 backup_name = f"{self.session_file}_corrupted_{timestamp}.session"
                 os.rename(session_path, backup_name)
-                LOGGER.writeLog(f"📁 Backed up corrupted session to {backup_name}")
+                LOGGER.writeDebugLog(f"📁 Backed up corrupted session to {backup_name}")
         except Exception as e:
             LOGGER.writeLog(f"❌ Failed to backup corrupted session: {e}")
         
@@ -306,7 +306,7 @@ class TelegramSessionManager:
             while wait_time < max_wait:
                 try:
                     fcntl.flock(self._session_lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    LOGGER.writeLog(f"🔒 Session lock acquired after {wait_time}s")
+                    LOGGER.writeDebugLog(f"🔒 Session lock acquired after {wait_time}s")
                     return
                 except BlockingIOError:
                     # Lock is held by another process
@@ -334,7 +334,7 @@ class TelegramSessionManager:
             try:
                 fcntl.flock(self._session_lock.fileno(), fcntl.LOCK_UN)
                 self._session_lock.close()
-                LOGGER.writeLog("🔓 Session lock released")
+                LOGGER.writeDebugLog("🔓 Session lock released")
             except Exception as e:
                 LOGGER.writeLog(f"⚠️ Error releasing session lock: {e}")
             finally:

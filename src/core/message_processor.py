@@ -108,12 +108,12 @@ class MessageProcessor:
             text_without_urls = re.sub(r'[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', '', text_without_urls)  # Remove domain-like patterns
             content_words = [word for word in text_without_urls.lower().split() if len(word) > 2 and not re.match(r'^[a-z0-9.:/-]+$', word)]
             
-            LOGGER.writeLog(f'MessageProcessor: Language detection - English ratio: {english_ratio:.2f}, Arabic ratio: {arabic_ratio:.2f}, Arabic char ratio: {arabic_char_ratio:.2f}, Arabic script: {has_arabic_script}, Latin script: {has_latin_script}')
+            LOGGER.writeDebugLog(f'MessageProcessor: Language detection - English ratio: {english_ratio:.2f}, Arabic ratio: {arabic_ratio:.2f}, Arabic char ratio: {arabic_char_ratio:.2f}, Arabic script: {has_arabic_script}, Latin script: {has_latin_script}')
             
             # Enhanced decision logic prioritizing Arabic content
             # Priority 1: High Arabic character content (substantial Arabic text)
             if arabic_char_ratio > 0.3:  # More than 30% Arabic characters
-                LOGGER.writeLog(f'MessageProcessor: High Arabic character ratio ({arabic_char_ratio:.2f}) - classifying as Arabic')
+                LOGGER.writeDebugLog(f'MessageProcessor: High Arabic character ratio ({arabic_char_ratio:.2f}) - classifying as Arabic')
                 return 'arabic'
             
             # Priority 2: Pure script types
@@ -126,7 +126,7 @@ class MessageProcessor:
             if has_arabic_script and has_latin_script:
                 # For mixed content, check if Arabic words are substantial
                 if arabic_char_ratio > 0.15 and (arabic_ratio > 0.05 or arabic_matches > 0):
-                    LOGGER.writeLog(f'MessageProcessor: Mixed content with substantial Arabic ({arabic_char_ratio:.2f} chars, {arabic_ratio:.2f} words) - classifying as Arabic')
+                    LOGGER.writeDebugLog(f'MessageProcessor: Mixed content with substantial Arabic ({arabic_char_ratio:.2f} chars, {arabic_ratio:.2f} words) - classifying as Arabic')
                     return 'arabic'
                 elif english_ratio > 0.2:
                     return 'english'
@@ -202,7 +202,7 @@ class MessageProcessor:
         try:
             # Detect language without translation
             detected_language = self.detectLanguage(message)
-            LOGGER.writeLog(f'MessageProcessor: Language detected: {detected_language}')
+            LOGGER.writeDebugLog(f'MessageProcessor: Language detected: {detected_language}')
             
             # Initialize translation info (no translation performed at this stage)
             translation_info = {
@@ -260,12 +260,12 @@ class MessageProcessor:
             triv_keywords = get_keywords(trivial_keywords)
             excl_keywords = get_keywords(exclude_keywords)
             
-            LOGGER.writeLog(f'MessageProcessor: Using {detected_language} keywords - Significant: {len(sig_keywords)}, Trivial: {len(triv_keywords)}, Exclude: {len(excl_keywords)}')
+            LOGGER.writeDebugLog(f'MessageProcessor: Using {detected_language} keywords - Significant: {len(sig_keywords)}, Trivial: {len(triv_keywords)}, Exclude: {len(excl_keywords)}')
             
             # Exclude check - highest priority
             for keyword in excl_keywords:
                 if self._matchesWholeWord(keyword, analysis_text):
-                    LOGGER.writeLog(f'MessageProcessor: Message excluded due to keyword: {keyword}')
+                    LOGGER.writeDebugLog(f'MessageProcessor: Message excluded due to keyword: {keyword}')
                     return False, [], "excluded", translation_info
             
             # Find keyword matches (using language-specific keywords for matching)
@@ -278,8 +278,8 @@ class MessageProcessor:
             
             # Classification logic
             if matched_significant:
-                LOGGER.writeLog(f'MessageProcessor: Message classified as Significant by keywords (English): {matched_significant}')
-                LOGGER.writeLog(f'MessageProcessor: Native keywords that matched: {matched_significant_native}')
+                LOGGER.writeDebugLog(f'MessageProcessor: Message classified as Significant by keywords (English): {matched_significant}')
+                LOGGER.writeDebugLog(f'MessageProcessor: Native keywords that matched: {matched_significant_native}')
                 
                 # Enhanced filtering: Check additional criteria if enabled
                 use_enhanced_filtering = False
@@ -290,17 +290,17 @@ class MessageProcessor:
                     additional_criteria = filtering.get('additional_ai_criteria', [])
                 
                 if use_enhanced_filtering and additional_criteria and self.openai_processor:
-                    LOGGER.writeLog(f'MessageProcessor: Performing enhanced filtering with {len(additional_criteria)} additional criteria')
+                    LOGGER.writeDebugLog(f'MessageProcessor: Performing enhanced filtering with {len(additional_criteria)} additional criteria')
                     try:
                         meets_criteria, failed_criteria, reason = self.openai_processor._checkAdditionalCriteria(
                             message, additional_criteria, country_config
                         )
                         
                         if not meets_criteria:
-                            LOGGER.writeLog(f'MessageProcessor: Significant message failed additional criteria: {failed_criteria}')
+                            LOGGER.writeDebugLog(f'MessageProcessor: Significant message failed additional criteria: {failed_criteria}')
                             return False, [], f"failed_additional_criteria_{reason}", translation_info
                         else:
-                            LOGGER.writeLog(f'MessageProcessor: Message passed enhanced filtering - meets all additional criteria')
+                            LOGGER.writeDebugLog(f'MessageProcessor: Message passed enhanced filtering - meets all additional criteria')
                     except Exception as e:
                         LOGGER.writeLog(f'MessageProcessor: Enhanced filtering failed, proceeding with original classification: {e}')
                         # Continue with original classification if criteria checking fails
@@ -308,18 +308,18 @@ class MessageProcessor:
                 return True, matched_significant, "the list of SIGNIFICANT keywords", translation_info
 
             elif matched_trivial and not matched_significant:
-                LOGGER.writeLog(f'MessageProcessor: Message classified as Trivial by keywords (English): {matched_trivial}')
-                LOGGER.writeLog(f'MessageProcessor: Native keywords that matched: {matched_trivial_native}')
+                LOGGER.writeDebugLog(f'MessageProcessor: Message classified as Trivial by keywords (English): {matched_trivial}')
+                LOGGER.writeDebugLog(f'MessageProcessor: Native keywords that matched: {matched_trivial_native}')
                 return False, matched_trivial, "the list of TRIVIAL keywords", translation_info
 
             else:
                 # No keywords matched
-                LOGGER.writeLog(f'MessageProcessor: No keywords matched')
+                LOGGER.writeDebugLog(f'MessageProcessor: No keywords matched')
                 if use_ai and self.openai_processor:
-                    LOGGER.writeLog(f'MessageProcessor: Using AI analysis for unmatched message')
+                    LOGGER.writeDebugLog(f'MessageProcessor: Using AI analysis for unmatched message')
                     return self._analyzeWithAI(analysis_text, sig_keywords, triv_keywords, country_config, translation_info)
                 else:
-                    LOGGER.writeLog(f'MessageProcessor: AI disabled, defaulting to trivial for unmatched message')
+                    LOGGER.writeDebugLog(f'MessageProcessor: AI disabled, defaulting to trivial for unmatched message')
                     return False, [], "no matching keywords across all keyword lists", translation_info
                     
         except Exception as e:
@@ -350,7 +350,7 @@ class MessageProcessor:
         OpenAI can analyze non-English messages directly without pre-translation.
         """
         if not self.openai_processor:
-            LOGGER.writeLog('MessageProcessor: No OpenAI processor available for AI analysis')
+            LOGGER.writeDebugLog('MessageProcessor: No OpenAI processor available for AI analysis')
             return False, [], "ai_unavailable", translation_info
         
         try:
@@ -402,7 +402,7 @@ class MessageProcessor:
         """
         try:
             if not message or not message.strip():
-                LOGGER.writeLog('MessageProcessor: Empty message provided for translation')
+                LOGGER.writeDebugLog('MessageProcessor: Empty message provided for translation')
                 return {
                     'success': False,
                     'translated_text': message or '',
@@ -418,7 +418,7 @@ class MessageProcessor:
                 filtering = country_config['message_filtering']
                 use_ai_for_translation = filtering.get('use_ai_for_translation', False)
             
-            LOGGER.writeLog(f'MessageProcessor: Translating message using {"OpenAI" if use_ai_for_translation else "Google Translate"}')
+            LOGGER.writeDebugLog(f'MessageProcessor: Translating message using {"OpenAI" if use_ai_for_translation else "Google Translate"}')
             
             # Use the translation processor with provided language info to avoid redundant detection
             translation_result = self.translation_processor.translate(
@@ -429,9 +429,9 @@ class MessageProcessor:
             
             # Log translation result
             if translation_result['was_translated']:
-                LOGGER.writeLog(f'MessageProcessor: Message translated from {translation_result["detected_language"]} to English using {translation_result["translation_method"]}')
+                LOGGER.writeDebugLog(f'MessageProcessor: Message translated from {translation_result["detected_language"]} to English using {translation_result["translation_method"]}')
             else:
-                LOGGER.writeLog(f'MessageProcessor: Message already in English or translation not needed')
+                LOGGER.writeDebugLog(f'MessageProcessor: Message already in English or translation not needed')
             
             return translation_result
             

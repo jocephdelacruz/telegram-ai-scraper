@@ -42,7 +42,7 @@ def run_async_in_celery(coro, timeout=300):
         try:
             loop = asyncio.get_running_loop()
             # If we get here, there's already a running loop
-            LOGGER.writeLog("Detected running event loop, creating new thread for async execution")
+            LOGGER.writeDebugLog("Detected running event loop, creating new thread for async execution")
             
             def run_in_thread():
                 # Create a new event loop for this thread
@@ -59,7 +59,7 @@ def run_async_in_celery(coro, timeout=300):
                 
         except RuntimeError:
             # No running loop, we can create one
-            LOGGER.writeLog("No running event loop detected, creating new one")
+            LOGGER.writeDebugLog("No running event loop detected, creating new one")
             return asyncio.run(coro)
             
     except Exception as e:
@@ -77,13 +77,13 @@ def process_telegram_message(self, message_data, config):
         channel = message_data.get('channel', 'unknown')
         country_code = message_data.get('country_code', 'unknown')
         
-        LOGGER.writeLog(f"Processing message {message_id} from {channel} ({country_code})")
+        LOGGER.writeDebugLog(f"Processing message {message_id} from {channel} ({country_code})")
         
         # SINGLE EFFICIENT EMPTY MESSAGE CHECK - Skip processing if no meaningful text content
         # Message_Text contains the original text from Telegram, so check that first
         message_text = message_data.get('Message_Text', '') or message_data.get('text', '')
         if not message_text or not message_text.strip():
-            LOGGER.writeLog(f"⏭️ SKIPPING empty message {message_id} - no text content from Telegram")
+            LOGGER.writeDebugLog(f"⏭️ SKIPPING empty message {message_id} - no text content from Telegram")
             
             # Mark message as processed in Redis to prevent reprocessing
             try:
@@ -91,7 +91,7 @@ def process_telegram_message(self, message_data, config):
                 redis_client = redis.Redis(host='localhost', port=6379, db=1)
                 duplicate_key = f"processed_msg:{channel}:{message_id}"
                 redis_client.setex(duplicate_key, 86400, "1")  # 24 hours
-                LOGGER.writeLog(f"Empty message {message_id} marked as processed in Redis")
+                LOGGER.writeDebugLog(f"Empty message {message_id} marked as processed in Redis")
             except Exception as redis_error:
                 LOGGER.writeLog(f"Warning: Could not mark empty message {message_id} in Redis: {redis_error}")
             
@@ -131,7 +131,7 @@ def process_telegram_message(self, message_data, config):
         
         # Perform translation if needed
         if should_translate and not translation_info['is_english']:
-            LOGGER.writeLog(f"Translating message {message_id} from {translation_info['original_language']}")
+            LOGGER.writeDebugLog(f"Translating message {message_id} from {translation_info['original_language']}")
             translation_result = message_processor.translateMessage(
                 original_text, 
                 country_config, 
@@ -145,7 +145,7 @@ def process_telegram_message(self, message_data, config):
                 message_data['Original_Text'] = original_text
                 message_data['Original_Language'] = translation_result['detected_language']
                 message_data['Was_Translated'] = True
-                LOGGER.writeLog(f"Message {message_id} translated successfully using {translation_result['translation_method']}")
+                LOGGER.writeDebugLog(f"Message {message_id} translated successfully using {translation_result['translation_method']}")
             else:
                 # Translation failed or not needed
                 message_data['Original_Text'] = original_text
@@ -159,9 +159,9 @@ def process_telegram_message(self, message_data, config):
             message_data['Original_Language'] = translation_info['original_language']
             message_data['Was_Translated'] = False
             if should_translate:
-                LOGGER.writeLog(f"Message {message_id} already in English, no translation needed")
+                LOGGER.writeDebugLog(f"Message {message_id} already in English, no translation needed")
             else:
-                LOGGER.writeLog(f"Translation skipped for trivial message {message_id}")
+                LOGGER.writeDebugLog(f"Translation skipped for trivial message {message_id}")
         
 
         
@@ -188,7 +188,7 @@ def process_telegram_message(self, message_data, config):
         country_info = countries.get(country_code, {})
         
         if message_data['is_significant']:
-            LOGGER.writeLog(f"Message {message_id} marked as SIGNIFICANT")
+            LOGGER.writeDebugLog(f"Message {message_id} marked as SIGNIFICANT")
             
             # Send Teams notification for significant messages only
             if country_info.get('teams_webhook'):
@@ -197,7 +197,7 @@ def process_telegram_message(self, message_data, config):
             else:
                 LOGGER.writeLog(f"No Teams webhook configured for {country_code}")
         else:
-            LOGGER.writeLog(f"Message {message_id} marked as TRIVIAL")
+            LOGGER.writeDebugLog(f"Message {message_id} marked as TRIVIAL")
             
         # Save ALL messages (both significant and trivial) to SharePoint
         if country_info.get('sharepoint_config'):
@@ -218,12 +218,12 @@ def process_telegram_message(self, message_data, config):
             duplicate_key = f"processed_msg:{channel}:{message_id}"
             # Set expiration to 24 hours (longer than fetch interval to prevent reprocessing)
             redis_client.setex(duplicate_key, 86400, "1")  # 24 hours = 86400 seconds
-            LOGGER.writeLog(f"Message {message_id} marked as processed in Redis")
+            LOGGER.writeDebugLog(f"Message {message_id} marked as processed in Redis")
         except Exception as redis_error:
             LOGGER.writeLog(f"Warning: Could not mark message {message_id} as processed in Redis: {redis_error}")
             # Don't fail the task if Redis marking fails
         
-        LOGGER.writeLog(f"Message {message_id} processing completed - {message_data['AI_Category']}")
+        LOGGER.writeDebugLog(f"Message {message_id} processing completed - {message_data['AI_Category']}")
         
         return {
             "status": "success", 
@@ -263,7 +263,7 @@ def send_teams_notification(self, message_data, config, country_code):
     try:
         message_id = message_data.get('id', 'unknown')
         
-        LOGGER.writeLog(f"Sending Teams notification for message {message_id} ({country_code})")
+        LOGGER.writeDebugLog(f"Sending Teams notification for message {message_id} ({country_code})")
         
         # Get country-specific Teams configuration
         countries = config.get('COUNTRIES', {})
@@ -279,7 +279,7 @@ def send_teams_notification(self, message_data, config, country_code):
         success = teams_notifier.send_message_alert(message_data)
         
         if success:
-            LOGGER.writeLog(f"Teams notification sent successfully for message {message_id} to {country_code}")
+            LOGGER.writeDebugLog(f"Teams notification sent successfully for message {message_id} to {country_code}")
         else:
             raise Exception("Teams notification failed")
             
@@ -303,7 +303,7 @@ def save_to_sharepoint(self, message_data, config, country_code):
         is_significant = message_data.get('is_significant', False)
         category = "Significant" if is_significant else "Trivial"
         
-        LOGGER.writeLog(f"Saving {category} message {message_id} to SharePoint ({country_code}) - Attempt {self.request.retries + 1}")
+        LOGGER.writeDebugLog(f"Saving {category} message {message_id} to SharePoint ({country_code}) - Attempt {self.request.retries + 1}")
         
         # Get country-specific SharePoint configuration
         countries = config.get('COUNTRIES', {})
@@ -332,7 +332,7 @@ def save_to_sharepoint(self, message_data, config, country_code):
         
         for attempt in range(max_init_attempts):
             try:
-                LOGGER.writeLog(f"Initializing SharePoint processor - attempt {attempt + 1}/{max_init_attempts}")
+                LOGGER.writeDebugLog(f"Initializing SharePoint processor - attempt {attempt + 1}/{max_init_attempts}")
                 
                 sp_processor = SharepointProcessor(
                     sp_config['ClientID'], 
@@ -354,7 +354,7 @@ def save_to_sharepoint(self, message_data, config, country_code):
                     hasattr(sp_processor, 'fileID') and 
                     sp_processor.fileID):
                     
-                    LOGGER.writeLog(f"SharePoint processor initialized successfully on attempt {attempt + 1}")
+                    LOGGER.writeDebugLog(f"SharePoint processor initialized successfully on attempt {attempt + 1}")
                     break
                 else:
                     LOGGER.writeLog(f"SharePoint processor initialization incomplete on attempt {attempt + 1}")
@@ -389,7 +389,7 @@ def save_to_sharepoint(self, message_data, config, country_code):
         excluded_sharepoint_fields = config.get('EXCLUDED_SHAREPOINT_FIELDS', [])
         sharepoint_fields = [field for field in excel_fields if field not in excluded_sharepoint_fields]
         
-        LOGGER.writeLog(f"SharePoint field filtering - Total fields: {len(excel_fields)}, SharePoint fields: {len(sharepoint_fields)}")
+        LOGGER.writeDebugLog(f"SharePoint field filtering - Total fields: {len(excel_fields)}, SharePoint fields: {len(sharepoint_fields)}")
         
         # Filter message data to only include fields expected in SharePoint
         filtered_message_data = {}
@@ -400,17 +400,17 @@ def save_to_sharepoint(self, message_data, config, country_code):
             if field == 'Channel' and isinstance(value, str) and value.startswith('@'):
                 # Add single quote prefix to prevent Excel from treating as formula/reference
                 value = f"'{value}"
-                LOGGER.writeLog(f"Applied Excel escaping to channel: {message_data.get(field, '')} → {value}")
+                LOGGER.writeDebugLog(f"Applied Excel escaping to channel: {message_data.get(field, '')} → {value}")
             
             # Apply Excel formula escaping for Author field to prevent #NAME? errors
             if field == 'Author' and isinstance(value, str) and value.startswith('@'):
                 # Add single quote prefix to prevent Excel from treating as formula/reference
                 value = f"'{value}"
-                LOGGER.writeLog(f"Applied Excel escaping to author: {message_data.get(field, '')} → {value}")
+                LOGGER.writeDebugLog(f"Applied Excel escaping to author: {message_data.get(field, '')} → {value}")
             
             filtered_message_data[field] = value
         
-        LOGGER.writeLog(f"Filtered message data - Original fields: {len(message_data)}, Filtered fields: {len(filtered_message_data)}")
+        LOGGER.writeDebugLog(f"Filtered message data - Original fields: {len(message_data)}, Filtered fields: {len(filtered_message_data)}")
         
         sp_data = [filtered_message_data]  # Single filtered message
         sp_format_data = sp_processor.convertDictToSPFormat(sp_data, sharepoint_fields)
@@ -424,7 +424,7 @@ def save_to_sharepoint(self, message_data, config, country_code):
         except:
             # If sheet doesn't exist or other error, start at row 2 (assuming headers in row 1)
             next_row = 2
-            LOGGER.writeLog(f"Using default row 2 for sheet {sheet_name}")
+            LOGGER.writeDebugLog(f"Using default row 2 for sheet {sheet_name}")
         
         range_address = f"A{next_row}:{chr(ord('A') + len(sharepoint_fields) - 1)}{next_row}"
         
@@ -435,7 +435,7 @@ def save_to_sharepoint(self, message_data, config, country_code):
         # Only send the data row, not the headers (convertDictToSPFormat returns [headers, data])
         if len(sp_format_data) > 1:
             data_only = [sp_format_data[1]]  # Only the data row
-            LOGGER.writeLog(f"Writing data to {sheet_name} sheet at {range_address}: {len(data_only[0])} columns")
+            LOGGER.writeDebugLog(f"Writing data to {sheet_name} sheet at {range_address}: {len(data_only[0])} columns")
             success = sp_processor.updateRange(sheet_name, range_address, data_only)
         else:
             raise Exception("No data row found after SharePoint format conversion")
@@ -443,12 +443,12 @@ def save_to_sharepoint(self, message_data, config, country_code):
         # Always close the session in a try-catch to prevent this from causing task failure
         try:
             sp_processor.closeExcelSession()
-            LOGGER.writeLog("SharePoint session closed successfully")
+            LOGGER.writeDebugLog("SharePoint session closed successfully")
         except Exception as close_error:
             LOGGER.writeLog(f"Warning: Failed to close SharePoint session: {close_error}")
         
         if success:
-            LOGGER.writeLog(f"{category} message {message_id} saved to SharePoint sheet '{sheet_name}' successfully ({country_code})")
+            LOGGER.writeDebugLog(f"{category} message {message_id} saved to SharePoint sheet '{sheet_name}' successfully ({country_code})")
         else:
             raise Exception("SharePoint update failed - data may not have been saved")
             
@@ -485,7 +485,7 @@ def save_to_csv_backup(self, message_data, config):
         country_code = message_data.get('country_code', 'unknown')
         category = message_data.get('AI_Category', 'Unknown')
         
-        LOGGER.writeLog(f"Saving {category} message {message_id} to CSV backup ({country_code})")
+        LOGGER.writeDebugLog(f"Saving {category} message {message_id} to CSV backup ({country_code})")
         
         # Create country-specific CSV files using absolute path
         data_dir = os.path.join(PROJECT_ROOT, "data")
@@ -513,16 +513,16 @@ def save_to_csv_backup(self, message_data, config):
                 # Replace various types of newlines with <br> tags
                 value = value.replace('\r\n', '<br>').replace('\n', '<br>').replace('\r', '<br>')
                 if value != message_data.get(field, ''):
-                    LOGGER.writeLog(f"CSV newline conversion applied to field '{field}': {len(value.split('<br>'))-1} newlines converted")
+                    LOGGER.writeDebugLog(f"CSV newline conversion applied to field '{field}': {len(value.split('<br>'))-1} newlines converted")
             
             filtered_message_data[field] = value
         
-        LOGGER.writeLog(f"CSV write - Original fields: {len(message_data)}, Filtered fields: {len(filtered_message_data)}")
+        LOGGER.writeDebugLog(f"CSV write - Original fields: {len(message_data)}, Filtered fields: {len(filtered_message_data)}")
         
         success = file_handler.append_to_csv(filtered_message_data, excel_fields)
         
         if success:
-            LOGGER.writeLog(f"{category} message {message_id} saved to CSV backup successfully ({country_code})")
+            LOGGER.writeDebugLog(f"{category} message {message_id} saved to CSV backup successfully ({country_code})")
         else:
             raise Exception("CSV backup write failed")
             
@@ -554,7 +554,7 @@ def cleanup_old_tasks(self):
         config = load_cleanup_config()
         data_retention_days = config.get('DATA_RETENTION_DAYS', 3)
         
-        LOGGER.writeLog(f"📅 Using data retention period: {data_retention_days} days")
+        LOGGER.writeDebugLog(f"📅 Using data retention period: {data_retention_days} days")
         
         # 1. Clean up old Celery task results
         try:
@@ -565,14 +565,14 @@ def cleanup_old_tasks(self):
         
         # 2. Clean up SharePoint entries
         try:
-            LOGGER.writeLog("🔄 Starting SharePoint cleanup...")
+            LOGGER.writeDebugLog("🔄 Starting SharePoint cleanup...")
             from src.tasks.sharepoint_cleanup import cleanup_old_sharepoint_entries
             
             # Call the SharePoint cleanup function directly
             sharepoint_result = cleanup_old_sharepoint_entries(days_to_keep=data_retention_days)
             
             cleanup_results["sharepoint"] = sharepoint_result
-            LOGGER.writeLog(f"✅ SharePoint cleanup completed: {sharepoint_result.get('status', 'unknown')}")
+            LOGGER.writeDebugLog(f"✅ SharePoint cleanup completed: {sharepoint_result.get('status', 'unknown')}")
             
         except Exception as e:
             LOGGER.writeLog(f"❌ SharePoint cleanup failed: {e}")
@@ -786,7 +786,7 @@ def fetch_new_messages_from_all_channels(self):
     # Check session safety and acquire lock (integrated approach)
     try:
         safety_manager.check_session_safety("periodic_fetch")
-        LOGGER.writeLog("� Session safety check passed - starting periodic message fetch")
+        LOGGER.writeDebugLog("� Session safety check passed - starting periodic message fetch")
     except SessionSafetyError as e:
         LOGGER.writeLog(f"🔒 Session safety check failed: {e}")
         return {
@@ -831,13 +831,13 @@ def fetch_new_messages_from_all_channels(self):
         age_limit_seconds = fetch_interval_seconds + 30
         age_limit_minutes = age_limit_seconds / 60.0
         
-        LOGGER.writeLog(f"Using fetch limit: {message_limit}, fetch interval: {fetch_interval_seconds}s, age limit: {age_limit_seconds}s ({age_limit_minutes:.1f} minutes)")
+        LOGGER.writeDebugLog(f"Using fetch limit: {message_limit}, fetch interval: {fetch_interval_seconds}s, age limit: {age_limit_seconds}s ({age_limit_minutes:.1f} minutes)")
 
         # Calculate cutoff time for message age filtering (use UTC to match Telegram message timestamps)
         from datetime import timedelta, timezone
         age_limit_seconds = fetch_interval_seconds + 30  # Buffer for processing delays
         cutoff_time = datetime.now(timezone.utc) - timedelta(seconds=age_limit_seconds)
-        LOGGER.writeLog(f"Only processing messages newer than: {cutoff_time.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+        LOGGER.writeDebugLog(f"Only processing messages newer than: {cutoff_time.strftime('%Y-%m-%d %H:%M:%S')} UTC")
         
         # Get all channels from all countries
         all_channels = []
@@ -881,7 +881,7 @@ def fetch_new_messages_from_all_channels(self):
             fetch_messages_async(telegram_scraper, all_channels, config, cutoff_time, message_limit)
         )
         
-        LOGGER.writeLog(f"✅ Periodic message fetch completed. New messages processed: {total_messages}, " +
+        LOGGER.writeDebugLog(f"✅ Periodic message fetch completed. New messages processed: {total_messages}, " +
                        f"skipped (too old): {skipped_messages}")
        
         return {
@@ -979,7 +979,7 @@ async def fetch_messages_async(telegram_scraper, all_channels, config, cutoff_ti
     try:
         # Start Telegram client
         await telegram_scraper.start_client()
-        LOGGER.writeLog("Telegram client started for periodic fetch")
+        LOGGER.writeDebugLog("Telegram client started for periodic fetch")
         
         # Initialize Redis for duplicate detection
         import redis
@@ -1018,7 +1018,7 @@ async def fetch_messages_async(telegram_scraper, all_channels, config, cutoff_ti
                     message_text = message_data.get('text', '') or message_data.get('Message_Text', '')
                     if not message_text or not message_text.strip():
                         message_id = message_data.get('Message_ID', 'N/A')
-                        LOGGER.writeLog(f"⏭️  SKIPPING empty message {message_id} from {channel} - no text content")
+                        LOGGER.writeDebugLog(f"⏭️  SKIPPING empty message {message_id} from {channel} - no text content")
                         skipped_messages += 1
                         
                         # Mark as processed in Redis to prevent future reprocessing
@@ -1052,7 +1052,7 @@ async def fetch_messages_async(telegram_scraper, all_channels, config, cutoff_ti
                 
         # Stop Telegram client with proper cleanup
         await telegram_scraper.stop_client()
-        LOGGER.writeLog("Telegram client stopped after periodic fetch")
+        LOGGER.writeDebugLog("Telegram client stopped after periodic fetch")
        
         # Small delay to ensure proper cleanup
         await asyncio.sleep(1)
@@ -1117,7 +1117,7 @@ def send_system_startup_notification():
         success = send_system_startup(components_started)
         
         if success:
-            LOGGER.writeLog("✅ System startup notification sent successfully to Teams admin")
+            LOGGER.writeDebugLog("✅ System startup notification sent successfully to Teams admin")
             return {"status": "success", "notification_sent": True}
         else:
             LOGGER.writeLog("⚠️  System startup notification failed or admin Teams not configured")
@@ -1152,20 +1152,20 @@ def get_next_available_row(sp_processor, sheet_name):
             # If there's no data, start at row 2 (assuming headers in row 1)
             if row_count <= 1:  # Only headers or empty sheet
                 next_row = 2
-                LOGGER.writeLog(f"Sheet {sheet_name} has {row_count} rows, starting at row 2")
+                LOGGER.writeDebugLog(f"Sheet {sheet_name} has {row_count} rows, starting at row 2")
             else:
                 # Next available row is after the last used row
                 next_row = row_count + 1
-                LOGGER.writeLog(f"Sheet {sheet_name} has {row_count} rows, next available: {next_row}")
+                LOGGER.writeDebugLog(f"Sheet {sheet_name} has {row_count} rows, next available: {next_row}")
             
             return next_row
             
         elif response.status_code == 404:
             # Sheet might be empty or new, start at row 2
-            LOGGER.writeLog(f"Sheet {sheet_name} appears to be empty, starting at row 2")
+            LOGGER.writeDebugLog(f"Sheet {sheet_name} appears to be empty, starting at row 2")
             return 2
         else:
-            LOGGER.writeLog(f"Error getting used range for {sheet_name}: HTTP {response.status_code}")
+            LOGGER.writeDebugLog(f"Error getting used range for {sheet_name}: HTTP {response.status_code}")
             return 2  # Default fallback
         
     except Exception as e:

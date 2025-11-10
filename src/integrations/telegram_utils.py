@@ -191,7 +191,7 @@ class TelegramScraper:
         try:
             client = await self._ensure_client()
             entity = await client.get_entity(channel_username)
-            LOGGER.writeLog(f"Successfully retrieved entity for channel: {channel_username}")
+            LOGGER.writeDebugLog(f"Successfully retrieved entity for channel: {channel_username}")
             return entity
         except Exception as e:
             LOGGER.writeLog(f"Failed to get entity for channel {channel_username}: {e}")
@@ -274,13 +274,13 @@ class TelegramScraper:
                     if log_found_messages:
                         message_preview = (message_data.get('Message_Text', '') or '')[:20].replace('\n', ' ').strip()
                         if message_preview:
-                            LOGGER.writeLog(f"Found NEW message from {channel_username}: '{message_preview}...' (ID: {message_data.get('Message_ID', 'N/A')})")
+                            LOGGER.writeDebugLog(f"Found NEW message from {channel_username}: '{message_preview}...' (ID: {message_data.get('Message_ID', 'N/A')})")
 
             # Provide summary based on filtering applied
             if cutoff_time or redis_client:
                 # Detailed logging when filtering is applied
                 if new_messages > 0:
-                    LOGGER.writeLog(f"Retrieved {new_messages} NEW messages from {channel_username} (checked {message_count} total, skipped {duplicate_count} duplicates, {old_messages} too old)")
+                    LOGGER.writeDebugLog(f"Retrieved {new_messages} NEW messages from {channel_username} (checked {message_count} total, skipped {duplicate_count} duplicates, {old_messages} too old)")
                 else:
                     skip_reasons = []
                     if duplicate_count > 0:
@@ -288,13 +288,13 @@ class TelegramScraper:
                     if old_messages > 0:
                         skip_reasons.append(f"{old_messages} too old")
                     if message_count == 0:
-                        LOGGER.writeLog(f"No messages found in {channel_username}")
+                        LOGGER.writeDebugLog(f"No messages found in {channel_username}")
                     else:
                         reason_text = ", ".join(skip_reasons) if skip_reasons else "unknown reasons"
-                        LOGGER.writeLog(f"No new messages from {channel_username} (checked {message_count} total, skipped: {reason_text})")
+                        LOGGER.writeDebugLog(f"No new messages from {channel_username} (checked {message_count} total, skipped: {reason_text})")
             else:
                 # Simple logging for backward compatibility
-                LOGGER.writeLog(f"Retrieved {len(messages)} valid messages from {channel_username} (checked {message_count} total)")
+                LOGGER.writeDebugLog(f"Retrieved {len(messages)} valid messages from {channel_username} (checked {message_count} total)")
             
             return messages
         except Exception as e:
@@ -551,7 +551,7 @@ class TelegramScraper:
                 entity = await self.get_channel_entity(channel)
                 if entity:
                     channel_entities.append(entity)
-                    LOGGER.writeLog(f"Added channel {channel} to monitoring list")
+                    LOGGER.writeDebugLog(f"Added channel {channel} to monitoring list")
 
             if not channel_entities:
                 LOGGER.writeLog("No valid channels found for monitoring")
@@ -624,7 +624,7 @@ class TelegramScraper:
                 'restricted': getattr(entity, 'restricted', False)
             }
             
-            LOGGER.writeLog(f"Retrieved info for channel: {channel_username}")
+            LOGGER.writeDebugLog(f"Retrieved info for channel: {channel_username}")
             return info
         except Exception as e:
             LOGGER.writeLog(f"Failed to get info for channel {channel_username}: {e}")
@@ -655,7 +655,7 @@ class TelegramScraper:
                 if message_data:
                     messages.append(message_data)
 
-            LOGGER.writeLog(f"Found {len(messages)} messages matching '{query}' in {channel_username}")
+            LOGGER.writeDebugLog(f"Found {len(messages)} messages matching '{query}' in {channel_username}")
             return messages
         except Exception as e:
             LOGGER.writeLog(f"Failed to search messages in {channel_username}: {e}")
@@ -708,14 +708,14 @@ class TelegramScraper:
                     channel_username, None, redis_client
                 )
                 if last_processed_id:
-                    LOGGER.writeLog(f"🔍 Found last processed ID for {channel_username}: {last_processed_id}")
+                    LOGGER.writeDebugLog(f"🔍 Found last processed ID for {channel_username}: {last_processed_id}")
             except Exception as e:
                 LOGGER.writeLog(f"Could not get last processed ID for {channel_username}: {e}")
             
             # Step 2: Choose fetching strategy based on available tracking data
             if last_processed_id:
                 # EFFICIENT APPROACH: Use min_id to fetch only newer messages
-                LOGGER.writeLog(f"📥 Efficiently fetching max {safe_limit} messages from {channel_username} newer than ID {last_processed_id}")
+                LOGGER.writeDebugLog(f"📥 Efficiently fetching max {safe_limit} messages from {channel_username} newer than ID {last_processed_id}")
                 
                 # Calculate absolute age cutoff (4 hours max)
                 age_cutoff = datetime.now(timezone.utc) - timedelta(seconds=MAX_MESSAGE_AGE_SECONDS)
@@ -753,7 +753,7 @@ class TelegramScraper:
                         
             else:
                 # FALLBACK APPROACH: Use traditional limit + time filtering (same as get_channel_messages)
-                LOGGER.writeLog(f"📥 Fetching max {safe_limit} messages from {channel_username} (no tracking data, using time-based filtering)")
+                LOGGER.writeDebugLog(f"📥 Fetching max {safe_limit} messages from {channel_username} (no tracking data, using time-based filtering)")
                 
                 async for message in client.iter_messages(entity, limit=safe_limit):
                     message_count += 1
@@ -798,15 +798,15 @@ class TelegramScraper:
             total_checked = message_count
             
             if new_messages > 0:
-                LOGGER.writeLog(
+                LOGGER.writeDebugLog(
                     f"✅ Efficiently retrieved {new_messages} NEW messages from {channel_username} "
                     f"(strategy: {strategy}, checked {total_checked}, skipped {duplicate_count} duplicates, {old_messages} too old)"
                 )
             else:
                 if total_checked > 0:
-                    LOGGER.writeLog(f"📭 No new messages from {channel_username} (strategy: {strategy}, checked {total_checked}, {duplicate_count} duplicates, {old_messages} too old)")
+                    LOGGER.writeDebugLog(f"📭 No new messages from {channel_username} (strategy: {strategy}, checked {total_checked}, {duplicate_count} duplicates, {old_messages} too old)")
                 else:
-                    LOGGER.writeLog(f"📭 No messages found in {channel_username} (strategy: {strategy})")
+                    LOGGER.writeDebugLog(f"📭 No messages found in {channel_username} (strategy: {strategy})")
             
             return messages
             
@@ -869,7 +869,7 @@ class TelegramScraper:
             )
             
             if last_processed_id:
-                LOGGER.writeLog(f"🔍 Last processed message ID for {channel_username}: {last_processed_id}")
+                LOGGER.writeDebugLog(f"🔍 Last processed message ID for {channel_username}: {last_processed_id}")
                 min_id = last_processed_id  # Fetch messages newer than this ID
             else:
                 LOGGER.writeLog(f"🆕 No tracking data found for {channel_username}, using 4-hour age limit")
@@ -877,7 +877,7 @@ class TelegramScraper:
             
             # Step 2: Calculate 4-hour age cutoff (absolute maximum)
             age_cutoff = datetime.now(timezone.utc) - timedelta(seconds=MAX_MESSAGE_AGE_SECONDS)
-            LOGGER.writeLog(f"⏰ Age cutoff: {age_cutoff.strftime('%Y-%m-%d %H:%M:%S')} UTC (4 hours ago)")
+            LOGGER.writeDebugLog(f"⏰ Age cutoff: {age_cutoff.strftime('%Y-%m-%d %H:%M:%S')} UTC (4 hours ago)")
             
             # Step 3: Get channel entity
             entity = await self.get_channel_entity(channel_username)
@@ -891,7 +891,7 @@ class TelegramScraper:
             # Step 4: Fetch messages efficiently
             if min_id:
                 # Efficient: Fetch only messages newer than last processed ID
-                LOGGER.writeLog(f"📥 Fetching messages from {channel_username} newer than ID {min_id}")
+                LOGGER.writeDebugLog(f"📥 Fetching messages from {channel_username} newer than ID {min_id}")
                 async for message in client.iter_messages(entity, min_id=min_id):
                     total_checked += 1
                     
@@ -934,8 +934,8 @@ class TelegramScraper:
                 # Calculate conservative cutoff based on fetch interval
                 conservative_cutoff = datetime.now(timezone.utc) - timedelta(seconds=fetch_interval_seconds + 30)
                 
-                LOGGER.writeLog(f"⚠️  No tracking data for {channel_username}, using conservative fetch (limit: {fetch_message_limit}, age: {fetch_interval_seconds}s)")
-                LOGGER.writeLog(f"📅 Conservative cutoff: {conservative_cutoff.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+                LOGGER.writeDebugLog(f"⚠️  No tracking data for {channel_username}, using conservative fetch (limit: {fetch_message_limit}, age: {fetch_interval_seconds}s)")
+                LOGGER.writeDebugLog(f"📅 Conservative cutoff: {conservative_cutoff.strftime('%Y-%m-%d %H:%M:%S')} UTC")
                 
                 async for message in client.iter_messages(entity, limit=fetch_message_limit):
                     total_checked += 1
@@ -973,7 +973,7 @@ class TelegramScraper:
             
             # Step 6: Log summary
             if new_messages > 0:
-                LOGGER.writeLog(
+                LOGGER.writeDebugLog(
                     f"✅ Retrieved {new_messages} NEW messages from {channel_username} "
                     f"(checked {total_checked}, skipped {skipped_old} too old, {skipped_processed} already processed)"
                 )
@@ -985,10 +985,10 @@ class TelegramScraper:
                     skip_reasons.append(f"{skipped_processed} already processed")
                 
                 if total_checked == 0:
-                    LOGGER.writeLog(f"📭 No messages found in {channel_username}")
+                    LOGGER.writeDebugLog(f"📭 No messages found in {channel_username}")
                 else:
                     reason_text = ", ".join(skip_reasons) if skip_reasons else "unknown reasons"
-                    LOGGER.writeLog(
+                    LOGGER.writeDebugLog(
                         f"📭 No new messages from {channel_username} "
                         f"(checked {total_checked}, skipped: {reason_text})"
                     )
@@ -1039,7 +1039,7 @@ class TelegramScraper:
                     last_id_bytes = redis_client.get(redis_key)
                     if last_id_bytes:
                         last_id = int(last_id_bytes.decode('utf-8'))
-                        LOGGER.writeLog(f"🔍 Found Redis tracking for {channel_username}: {last_id}")
+                        LOGGER.writeDebugLog(f"🔍 Found Redis tracking for {channel_username}: {last_id}")
                         return last_id
                 except Exception as redis_error:
                     LOGGER.writeLog(f"Redis lookup failed for {channel_username}: {redis_error}")
@@ -1050,18 +1050,18 @@ class TelegramScraper:
                 for country_code, country_info in countries.items():
                     channels = country_info.get('channels', [])
                     if channel_username in channels:
-                        LOGGER.writeLog(f"📁 Checking CSV fallback for {channel_username} ({country_code})")
+                        LOGGER.writeDebugLog(f"📁 Checking CSV fallback for {channel_username} ({country_code})")
                         
                         csv_last_id = await self._get_last_id_from_csv(channel_username, country_code)
                         if csv_last_id:
-                            LOGGER.writeLog(f"📄 Found CSV tracking for {channel_username}: {csv_last_id}")
+                            LOGGER.writeDebugLog(f"📄 Found CSV tracking for {channel_username}: {csv_last_id}")
                             
                             # Update Redis with this ID for future use
                             if redis_client:
                                 try:
                                     redis_key = f"last_processed:{channel_username}"
                                     redis_client.setex(redis_key, 86400, str(csv_last_id))  # 24 hours
-                                    LOGGER.writeLog(f"💾 Updated Redis tracking for {channel_username}")
+                                    LOGGER.writeDebugLog(f"💾 Updated Redis tracking for {channel_username}")
                                 except Exception as redis_error:
                                     LOGGER.writeLog(f"Failed to update Redis tracking: {redis_error}")
                             
@@ -1069,7 +1069,7 @@ class TelegramScraper:
                         break
             
             # Option 3: No tracking data found
-            LOGGER.writeLog(f"🔍 No tracking data found for {channel_username}")
+            LOGGER.writeDebugLog(f"🔍 No tracking data found for {channel_username}")
             return None
             
         except Exception as e:
@@ -1122,7 +1122,7 @@ class TelegramScraper:
                     continue
             
             if highest_id:
-                LOGGER.writeLog(f"📊 Highest message ID in CSV for {channel_username}: {highest_id}")
+                LOGGER.writeDebugLog(f"📊 Highest message ID in CSV for {channel_username}: {highest_id}")
             
             return highest_id
             
@@ -1154,7 +1154,7 @@ class TelegramScraper:
             if highest_id > 0:
                 redis_key = f"last_processed:{channel_username}"
                 redis_client.setex(redis_key, 86400, str(highest_id))  # 24 hours expiry
-                LOGGER.writeLog(f"💾 Updated Redis tracking for {channel_username}: {highest_id}")
+                LOGGER.writeDebugLog(f"💾 Updated Redis tracking for {channel_username}: {highest_id}")
             
         except Exception as e:
             LOGGER.writeLog(f"Error updating Redis tracking for {channel_username}: {e}")
@@ -1170,7 +1170,7 @@ class TelegramScraper:
             
             if message_preview:
                 date_info = f"({message_date} {message_time})" if message_date and message_time else ""
-                LOGGER.writeLog(
+                LOGGER.writeDebugLog(
                     f"📨 NEW message {message_id} from {channel_username}: '{message_preview}...' {date_info}"
                 )
             
