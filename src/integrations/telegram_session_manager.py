@@ -83,9 +83,37 @@ class TelegramSessionManager:
         self.max_retry_attempts = 2
         self._session_lock = None
         self._lock_file_path = f"{session_file}.lock"
+        self._last_connection_test = None  # Track when we last tested the connection
+        
+        # Load connection test interval from config (uses FETCH_INTERVAL_SECONDS)
+        self._connection_test_interval = self._load_connection_test_interval()
         
         # Session manager initialized - use LOGGER for consistency
-        LOGGER.writeLog("TelegramSessionManager initialized with advanced session management")
+        LOGGER.writeLog(f"TelegramSessionManager initialized with connection test interval: {self._connection_test_interval}s ({self._connection_test_interval/60:.1f} min)")
+    
+    def _load_connection_test_interval(self):
+        """Load connection test interval from config (uses FETCH_INTERVAL_SECONDS)"""
+        try:
+            import os
+            import sys
+            sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+            from src.core import file_handling as fh
+            
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            config_path = os.path.join(project_root, "config", "config.json")
+            config_handler = fh.FileHandling(config_path)
+            config = config_handler.read_json()
+            
+            if config and 'TELEGRAM_CONFIG' in config:
+                fetch_interval = config['TELEGRAM_CONFIG'].get('FETCH_INTERVAL_SECONDS', 240)
+                LOGGER.writeDebugLog(f"Loaded connection test interval from config: {fetch_interval}s")
+                return fetch_interval
+            else:
+                LOGGER.writeLog("⚠️ Could not load config, using default interval: 240s")
+                return 240  # Default: 4 minutes
+        except Exception as e:
+            LOGGER.writeLog(f"⚠️ Error loading connection test interval: {e}, using default: 240s")
+            return 240  # Default: 4 minutes
     
     async def get_client(self, force_reconnect=False):
         """
@@ -113,13 +141,29 @@ class TelegramSessionManager:
         
         # Try to use existing client first
         if not force_reconnect and self.client and self.client.is_connected():
-            try:
-                # Test the connection with a simple API call
-                await self._test_connection()
+            # Only test connection if enough time has passed since last test
+            # This prevents excessive API calls on every get_client() call
+            should_test = (
+                self._last_connection_test is None or 
+                (datetime.now() - self._last_connection_test).total_seconds() > self._connection_test_interval
+            )
+            
+            if should_test:
+                try:
+                    # Test the connection with a simple API call
+                    await self._test_connection()
+                    self._last_connection_test = datetime.now()
+                    LOGGER.writeLog(f"✅ Periodic connection test passed (tested every {self._connection_test_interval}s)")
+                    return self.client
+                except Exception as e:
+                    LOGGER.writeLog(f"Existing client failed periodic test: {e}")
+                    self._last_connection_test = None
+                    await self._cleanup_client()
+            else:
+                # Connection was tested recently, trust it's still valid
+                time_since_test = (datetime.now() - self._last_connection_test).total_seconds()
+                LOGGER.writeDebugLog(f"✅ Reusing existing client (last tested {time_since_test:.0f}s ago)")
                 return self.client
-            except Exception as e:
-                LOGGER.writeLog(f"Existing client failed test: {e}")
-                await self._cleanup_client()
         
         # Create new client
         return await self._create_new_client()
@@ -146,8 +190,9 @@ class TelegramSessionManager:
             self.last_successful_connection = datetime.now()
             self.rate_limit_until = None
             self.connection_attempts = 0
+            self._last_connection_test = datetime.now()  # Mark connection as tested
             
-            LOGGER.writeLog("Telegram client started successfully with session protection")
+            LOGGER.writeLog(f"Telegram client started successfully with initial connection test passed (tested every {self._connection_test_interval}s)")
             return self.client
             
         except FloodWaitError as e:
@@ -186,6 +231,7 @@ class TelegramSessionManager:
                     # Success - update state
                     self.last_successful_connection = datetime.now()
                     self.connection_attempts = 0
+                    self._last_connection_test = datetime.now()  # Mark connection as tested
                     
                     LOGGER.writeLog("✅ Session renewed successfully without phone logout")
                     return self.client
@@ -285,6 +331,7 @@ class TelegramSessionManager:
                 LOGGER.writeLog(f"⚠️ Error during client disconnect: {e}")
             finally:
                 self.client = None
+                self._last_connection_test = None  # Reset connection test timestamp
         
         # Always release the session lock after cleanup
         await self._release_session_lock()
