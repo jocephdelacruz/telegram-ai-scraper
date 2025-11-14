@@ -10,6 +10,7 @@ import redis
 from datetime import datetime, timedelta, timezone
 import asyncio
 from src.core import log_handling as lh
+from src.core import file_handling as fh
 from .telegram_session_manager import TelegramSessionManager, TelegramRateLimitError, TelegramSessionError, TelegramAuthError
 
 
@@ -40,6 +41,17 @@ class TelegramScraper:
             self.phone_number = phone_number
             self.session_file = session_file
             self._error_count = 0
+            
+            # Load config
+            try:
+                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                config_path = os.path.join(project_root, "config", "config.json")
+                config_handler = fh.FileHandling(config_path)
+                self.default_config = config_handler.read_json()
+                LOGGER.writeDebugLog("Configuration loaded successfully")
+            except Exception as config_error:
+                LOGGER.writeLog(f"Warning: Could not load config.json: {config_error}")
+                self.default_config = None
             
             # Use advanced session manager instead of direct client management
             self.session_manager = TelegramSessionManager(api_id, api_hash, phone_number, session_file)
@@ -822,7 +834,7 @@ class TelegramScraper:
             try:
                 # Try to get from our tracking system (Redis first, then CSV fallback)
                 last_processed_id = await self._get_last_processed_message_id(
-                    channel_username, None, redis_client
+                    channel_username, redis_client
                 )
                 if last_processed_id:
                     LOGGER.writeDebugLog(f"🔍 Found last processed ID for {channel_username}: {last_processed_id}")
@@ -951,192 +963,7 @@ class TelegramScraper:
             return []
 
 
-    async def get_channel_messages_with_tracking(self, channel_username, config=None, redis_client=None, log_found_messages=True):
-        """
-        I'M NO LONGER USING THIS METHOD SINCE IT CAUSES THE TELEGRAM SESSION TO EXPIRE, PARTICULARLY WHEN THE PROJECT WAS NOT RUN FOR A WHILE.
-        
-        Efficient message fetching with Redis tracking and CSV fallback
-        
-        This method implements optimized message fetching that:
-        1. Uses Redis to track the last processed message ID per channel
-        2. Falls back to CSV files to determine last processed ID when Redis is unavailable
-        3. Only fetches messages newer than the last processed ID
-        4. Respects the 4-hour maximum message age limit
-        5. Minimizes Telegram API calls to avoid rate limiting
-        
-        Args:
-            channel_username: Channel username (e.g., @channelname)
-            config: Configuration dictionary containing country-specific settings
-            redis_client: Redis client instance for tracking (optional)
-            log_found_messages: Whether to log found messages (default True)
-            
-        Returns:
-            List of new message dictionaries that need processing
-        """
-        try:
-            # Initialize tracking variables
-            new_messages = 0
-            skipped_old = 0
-            skipped_processed = 0
-            total_checked = 0
-            
-            # Step 1: Determine the minimum message ID to fetch (last processed + 1)
-            last_processed_id = await self._get_last_processed_message_id(
-                channel_username, config, redis_client
-            )
-            
-            if last_processed_id:
-                LOGGER.writeDebugLog(f"🔍 Last processed message ID for {channel_username}: {last_processed_id}")
-                min_id = last_processed_id  # Fetch messages newer than this ID
-            else:
-                LOGGER.writeLog(f"🆕 No tracking data found for {channel_username}, using 4-hour age limit")
-                min_id = None  # Will use age-based filtering only
-            
-            # Step 2: Calculate 4-hour age cutoff (absolute maximum)
-            age_cutoff = datetime.now(timezone.utc) - timedelta(seconds=MAX_MESSAGE_AGE_SECONDS)
-            LOGGER.writeDebugLog(f"⏰ Age cutoff: {age_cutoff.strftime('%Y-%m-%d %H:%M:%S')} UTC (4 hours ago)")
-            
-            # Step 3: Get channel entity
-            entity = await self.get_channel_entity(channel_username)
-            if not entity:
-                LOGGER.writeLog(f"❌ Cannot get entity for {channel_username}")
-                return []
-            
-            client = await self._ensure_client()
-            messages = []
-            
-            # Step 4: Fetch messages efficiently
-            if min_id:
-                # Efficient: Fetch only messages newer than last processed ID
-                LOGGER.writeDebugLog(f"📥 Fetching messages from {channel_username} newer than ID {min_id}")
-                async for message in client.iter_messages(entity, min_id=min_id):
-                    total_checked += 1
-                    
-                    # Skip if message is too old (4-hour absolute limit)
-                    if message.date < age_cutoff:
-                        skipped_old += 1
-                        continue
-                    
-                    # Parse and add the message efficiently (no additional API calls)
-                    message_data = await self.parse_message_efficiently(message, channel_username)
-                    if message_data:
-                        # Check for duplicates using Redis if available
-                        if redis_client:
-                            message_id = message_data.get('Message_ID', '')
-                            duplicate_key = f"processed_msg:{channel_username}:{message_id}"
-                            try:
-                                if redis_client.exists(duplicate_key):
-                                    skipped_processed += 1
-                                    continue
-                            except Exception as redis_error:
-                                LOGGER.writeLog(f"Redis duplicate check failed: {redis_error}")
-                        
-                        messages.append(message_data)
-                        new_messages += 1
-                        
-                        if log_found_messages:
-                            self._log_new_message(message_data, channel_username)
-            else:
-                # Final fallback: Use original fetch interval method when no tracking data available
-                # This prevents massive duplication when both Redis and CSV are unavailable
-                fetch_interval_seconds = 240  # Default fallback
-                fetch_message_limit = 10      # Default fallback
-                
-                # Try to get config values if available
-                if config:
-                    telegram_config = config.get('TELEGRAM_CONFIG', {})
-                    fetch_interval_seconds = telegram_config.get('FETCH_INTERVAL_SECONDS', 240) 
-                    fetch_message_limit = telegram_config.get('FETCH_MESSAGE_LIMIT', 10)
-                
-                # Calculate conservative cutoff based on fetch interval
-                conservative_cutoff = datetime.now(timezone.utc) - timedelta(seconds=fetch_interval_seconds + 30)
-                
-                LOGGER.writeDebugLog(f"⚠️  No tracking data for {channel_username}, using conservative fetch (limit: {fetch_message_limit}, age: {fetch_interval_seconds}s)")
-                LOGGER.writeDebugLog(f"📅 Conservative cutoff: {conservative_cutoff.strftime('%Y-%m-%d %H:%M:%S')} UTC")
-                
-                async for message in client.iter_messages(entity, limit=fetch_message_limit):
-                    total_checked += 1
-                    
-                    # Skip if message is older than conservative cutoff (fetch interval based)
-                    if message.date < conservative_cutoff:
-                        skipped_old += 1
-                        continue
-                    
-                    # Parse and add the message efficiently (no additional API calls)
-                    message_data = await self.parse_message_efficiently(message, channel_username)
-                    if message_data:
-                        # Check for duplicates using Redis if available
-                        if redis_client:
-                            message_id = message_data.get('Message_ID', '')
-                            duplicate_key = f"processed_msg:{channel_username}:{message_id}"
-                            try:
-                                if redis_client.exists(duplicate_key):
-                                    skipped_processed += 1
-                                    continue
-                            except Exception as redis_error:
-                                LOGGER.writeLog(f"Redis duplicate check failed: {redis_error}")
-                        
-                        messages.append(message_data)
-                        new_messages += 1
-                        
-                        if log_found_messages:
-                            self._log_new_message(message_data, channel_username)
-            
-            # Step 5: Update Redis tracking with the newest message ID
-            if messages and redis_client:
-                await self._update_last_processed_id(
-                    channel_username, messages, redis_client
-                )
-            
-            # Step 6: Log summary
-            if new_messages > 0:
-                LOGGER.writeDebugLog(
-                    f"✅ Retrieved {new_messages} NEW messages from {channel_username} "
-                    f"(checked {total_checked}, skipped {skipped_old} too old, {skipped_processed} already processed)"
-                )
-            else:
-                skip_reasons = []
-                if skipped_old > 0:
-                    skip_reasons.append(f"{skipped_old} too old")
-                if skipped_processed > 0:
-                    skip_reasons.append(f"{skipped_processed} already processed")
-                
-                if total_checked == 0:
-                    LOGGER.writeDebugLog(f"📭 No messages found in {channel_username}")
-                else:
-                    reason_text = ", ".join(skip_reasons) if skip_reasons else "unknown reasons"
-                    LOGGER.writeDebugLog(
-                        f"📭 No new messages from {channel_username} "
-                        f"(checked {total_checked}, skipped: {reason_text})"
-                    )
-            
-            return messages
-            
-        except Exception as e:
-            LOGGER.writeLog(f"❌ Error in efficient message fetch from {channel_username}: {e}")
-            self._error_count += 1
-            
-            # Send critical exception to admin for tracking failures
-            if self._error_count % 10 == 0:
-                try:
-                    from .teams_utils import send_critical_exception
-                    send_critical_exception(
-                        "EfficientMessageFetchError",
-                        str(e),
-                        "TelegramScraper.get_channel_messages_with_tracking",
-                        additional_context={
-                            "channel": channel_username,
-                            "total_errors": self._error_count,
-                            "has_redis": redis_client is not None
-                        }
-                    )
-                except Exception as admin_error:
-                    LOGGER.writeLog(f"Failed to send tracking error to admin: {admin_error}")
-            
-            return []
-
-
-    async def _get_last_processed_message_id(self, channel_username, config, redis_client):
+    async def _get_last_processed_message_id(self, channel_username, redis_client):
         """
         Get the last processed message ID for a channel from Redis or CSV fallback
         
@@ -1162,8 +989,8 @@ class TelegramScraper:
                     LOGGER.writeLog(f"Redis lookup failed for {channel_username}: {redis_error}")
             
             # Option 2: CSV fallback - check both significant and trivial files
-            if config:
-                countries = config.get('COUNTRIES', {})
+            if self.default_config:
+                countries = self.default_config.get('COUNTRIES', {})
                 for country_code, country_info in countries.items():
                     channels = country_info.get('channels', [])
                     if channel_username in channels:
@@ -1184,6 +1011,8 @@ class TelegramScraper:
                             
                             return csv_last_id
                         break
+            else:
+                LOGGER.writeDebugLog(f"⚠️  Config not loaded, skipping CSV fallback for {channel_username}")
             
             # Option 3: No tracking data found
             LOGGER.writeDebugLog(f"🔍 No tracking data found for {channel_username}")
