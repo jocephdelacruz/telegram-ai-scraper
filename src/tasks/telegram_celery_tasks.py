@@ -42,7 +42,7 @@ def run_async_in_celery(coro, timeout=300):
         try:
             loop = asyncio.get_running_loop()
             # If we get here, there's already a running loop
-            LOGGER.writeDebugLog("Detected running event loop, creating new thread for async execution")
+            LOGGER.writeLog("Detected running event loop, creating new thread for async execution")
             
             def run_in_thread():
                 # Create a new event loop for this thread
@@ -77,7 +77,7 @@ def process_telegram_message(self, message_data, config):
         channel = message_data.get('channel', 'unknown')
         country_code = message_data.get('country_code', 'unknown')
         
-        LOGGER.writeDebugLog(f"Processing message {message_id} from {channel} ({country_code})")
+        LOGGER.writeLog(f"Processing message {message_id} from {channel} ({country_code})")
         
         # SINGLE EFFICIENT EMPTY MESSAGE CHECK - Skip processing if no meaningful text content
         # Message_Text contains the original text from Telegram, so check that first
@@ -962,7 +962,8 @@ def fetch_new_messages_from_all_channels(self):
 async def fetch_messages_async(telegram_scraper, all_channels, config, cutoff_time, message_limit):
     """
     Async function to fetch messages from all channels with age filtering
-
+    NOW WITH RATE LIMITING to prevent session expiration
+    
     Args:
         telegram_scraper: Telegram scraper instance
         all_channels: List of channel information
@@ -975,6 +976,10 @@ async def fetch_messages_async(telegram_scraper, all_channels, config, cutoff_ti
     """
     total_messages = 0
     skipped_messages = 0
+
+    # RATE LIMITING: Add delay between channels to prevent API abuse
+    channel_count = len(all_channels)
+    wait_seconds_per_channel = 4  # Conservative 4-second delay between channels
     
     try:
         # Start Telegram client
@@ -985,16 +990,18 @@ async def fetch_messages_async(telegram_scraper, all_channels, config, cutoff_ti
         import redis
         try:
             redis_client = redis.Redis(host='localhost', port=6379, db=1)
-            redis_client.ping()  # Test connection
+            redis_client.ping()
         except Exception as redis_error:
             LOGGER.writeLog(f"Redis connection failed, proceeding without duplicate detection: {redis_error}")
             redis_client = None
         
         # Fetch messages from each channel with filtering applied at retrieval level
-        for channel_info in all_channels:
+        for index, channel_info in enumerate(all_channels, 1):
             try:
                 channel = channel_info['channel']
                 country_code = channel_info['country_code']
+                
+                LOGGER.writeDebugLog(f"📡 Processing channel {index}/{channel_count}: {channel}")
                 
                 # Get recent messages with efficient ID tracking and age filtering
                 messages = await telegram_scraper.get_channel_messages_efficiently(
@@ -1002,7 +1009,7 @@ async def fetch_messages_async(telegram_scraper, all_channels, config, cutoff_ti
                     limit=message_limit, 
                     cutoff_time=cutoff_time,
                     redis_client=redis_client,
-                    log_found_messages=True  # Let the utils function handle detailed logging
+                    log_found_messages=True
                 )
                 
                 # Process each message that passed all filters
@@ -1025,11 +1032,11 @@ async def fetch_messages_async(telegram_scraper, all_channels, config, cutoff_ti
                         if redis_client:
                             try:
                                 duplicate_key = f"processed_msg:{channel}:{message_id}"
-                                redis_client.setex(duplicate_key, 86400, "1")  # 24 hours
+                                redis_client.setex(duplicate_key, 86400, "1")
                             except Exception as redis_error:
                                 LOGGER.writeLog(f"Warning: Could not mark empty message {message_id} in Redis: {redis_error}")
                         
-                        continue  # Skip to next message without queuing this one
+                        continue
                     
                     # Log that message is being queued for processing
                     message_id = message_data.get('Message_ID', 'N/A')
@@ -1045,9 +1052,20 @@ async def fetch_messages_async(telegram_scraper, all_channels, config, cutoff_ti
                     
                     # Small delay to avoid overwhelming the system
                     await asyncio.sleep(0.1)
+                
+                # 🛡️ CRITICAL RATE LIMITING: Wait between channels to prevent API abuse
+                # Telegram rate limit: ~1 request per channel every 3-5 seconds recommended
+                # Using 2 seconds as a conservative delay to avoid session termination
+                if index < channel_count:  # Don't wait after the last channel
+                    LOGGER.writeDebugLog(f"⏱️  Waiting {wait_seconds_per_channel}s before processing next channel (rate limiting)")
+                    await asyncio.sleep(wait_seconds_per_channel)
                     
             except Exception as e:
                 LOGGER.writeLog(f"Error fetching from channel {channel_info['channel']}: {e}")
+                
+                # Even on error, respect rate limiting before moving to next channel
+                if index < channel_count:
+                    await asyncio.sleep(wait_seconds_per_channel)
                 continue
                 
         # Stop Telegram client with proper cleanup
@@ -1055,7 +1073,7 @@ async def fetch_messages_async(telegram_scraper, all_channels, config, cutoff_ti
         LOGGER.writeDebugLog("Telegram client stopped after periodic fetch")
        
         # Small delay to ensure proper cleanup
-        await asyncio.sleep(1)
+        await asyncio.sleep(wait_seconds_per_channel)
         
     except Exception as e:
         LOGGER.writeLog(f"Error in async message fetch: {e}")

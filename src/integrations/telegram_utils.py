@@ -210,6 +210,7 @@ class TelegramScraper:
             return None
 
 
+    # No longer used, but kept for backward compatibility
     async def get_channel_messages(self, channel_username, limit=10, cutoff_time=None, redis_client=None, log_found_messages=True):
         """
         Get recent messages from a channel with optional filtering
@@ -736,6 +737,7 @@ class TelegramScraper:
                 LOGGER.writeLog(f"Failed to send monitoring error to admin: {admin_error}")
 
 
+    # No longer used, but kept for backward compatibility
     async def get_channel_info(self, channel_username):
         """Get information about a channel"""
         try:
@@ -760,6 +762,7 @@ class TelegramScraper:
             return None
 
 
+    # No longer used, but kept for backward compatibility
     async def search_messages(self, channel_username, query, limit=50):
         """
         Search for messages containing specific text in a channel
@@ -994,11 +997,11 @@ class TelegramScraper:
                 for country_code, country_info in countries.items():
                     channels = country_info.get('channels', [])
                     if channel_username in channels:
-                        LOGGER.writeDebugLog(f"📁 Checking CSV fallback for {channel_username} ({country_code})")
+                        LOGGER.writeLog(f"📁 Checking CSV fallback for {channel_username} ({country_code})")
                         
                         csv_last_id = await self._get_last_id_from_csv(channel_username, country_code)
                         if csv_last_id:
-                            LOGGER.writeDebugLog(f"📄 Found CSV tracking for {channel_username}: {csv_last_id}")
+                            LOGGER.writeLog(f"📄 Found CSV tracking for {channel_username}: {csv_last_id}")
                             
                             # Update Redis with this ID for future use
                             if redis_client:
